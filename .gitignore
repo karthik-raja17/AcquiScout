@@ -1,0 +1,43 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# virtualenvs
+.venv/
+venv/
+
+# generated pipeline output
+data/generated/*
+!data/generated/.gitkeep
+data/cache/
+*.sqlite
+*.db
+
+# knowledge graph / local tooling
+graphify-out/
+graphify/
+.rtk/
+
+# learning notes (VibeWise)
+.vibe-wise/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# logs
+*.log

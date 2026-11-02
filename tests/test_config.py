@@ -1,0 +1,53 @@
+import pytest
+from pydantic import ValidationError
+
+from acquiscout.config import Settings
+from acquiscout.schemas import County, ScoreWeights, Sector
+
+
+def _settings(**overrides: object) -> Settings:
+    return Settings(_env_file=None, **overrides)  # type: ignore[arg-type]
+
+
+def test_v1_defaults() -> None:
+    settings = _settings()
+    assert set(settings.counties) == {County.HILLSBOROUGH, County.PINELLAS, County.PASCO}
+    assert set(settings.sectors) == {Sector.TITLE_COMPANY, Sector.PROPERTY_MANAGEMENT}
+    assert sum(settings.weights.model_dump().values()) == 100
+    assert settings.min_revenue_usd == 1_500_000
+    assert settings.min_ebitda_usd == 500_000
+    assert settings.audit_sample_rate == 0.20
+
+
+def test_default_funnel_is_monotonic() -> None:
+    settings = _settings()
+    funnel = [
+        settings.weekly_raw,
+        settings.weekly_deduped,
+        settings.weekly_scraped,
+        settings.weekly_qualified,
+        settings.weekly_verified,
+    ]
+    assert funnel == sorted(funnel, reverse=True)
+
+
+def test_bad_weights_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ScoreWeights(financial_fit=40)
+
+
+def test_non_monotonic_funnel_rejected() -> None:
+    with pytest.raises(ValidationError):
+        _settings(weekly_scraped=600)
+
+
+def test_audit_rate_bounds() -> None:
+    with pytest.raises(ValidationError):
+        _settings(audit_sample_rate=0)
+    with pytest.raises(ValidationError):
+        _settings(audit_sample_rate=1.5)
+
+
+def test_empty_market_rejected() -> None:
+    with pytest.raises(ValidationError):
+        _settings(counties=[])

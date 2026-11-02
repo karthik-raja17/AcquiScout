@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acquiscout"
+version = "0.1.0"
+description = "Source-backed M&A prospect pipeline for Tampa Bay title and property management firms"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "httpx>=0.27",
+    "tenacity>=8.3",
+    "rapidfuzz>=3.9",
+]
+
+[project.optional-dependencies]
+agents = ["langgraph>=0.2"]
+api = ["fastapi>=0.111", "uvicorn[standard]>=0.30"]
+ui = ["streamlit>=1.36"]
+scrape = ["tavily-python>=0.5", "firecrawl-py>=1.0", "redis>=5.0"]
+eval = ["llm-guard>=0.3"]
+dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src"]
+strict = true
