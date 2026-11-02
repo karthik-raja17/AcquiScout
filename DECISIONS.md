@@ -9,7 +9,7 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
 ## ADR-001 — v1 market boundary is county-based
 
 - **Status:** accepted
-- **Context:** LJ's footprint spans Tampa–St. Petersburg–Clearwater; ZIP 33634 straddles Tampa city and unincorporated Hillsborough. City-limits targeting would drop valid targets.
+- **Context:** The client's footprint spans Tampa–St. Petersburg–Clearwater; the client's business ZIP straddles Tampa city and unincorporated Hillsborough. City-limits targeting would drop valid targets.
 - **Decision:** Tampa Bay = Hillsborough + Pinellas + Pasco. Counties live in config (`Settings.counties`), not code.
 - **Consequence:** Hernando/Manatee/Sarasota can be enabled later by config change only.
 

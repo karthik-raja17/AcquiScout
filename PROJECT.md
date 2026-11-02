@@ -12,7 +12,7 @@
 
 ## 1. Executive Problem Statement
 
-**Lj Bryant needs a repeatable, auditable system that produces 20+ qualified acquisition prospects per week in title companies and property management firms across the Tampa Bay area.** Each prospect must meet the financial and management profile — **$1.5M+ annual revenue, $500K+ EBITDA proxy, existing management team** — and must include verified contact information, ownership structure, revenue/EBITDA estimates with confidence bands, source URLs, an acquisition-potential score, and CRM-ready pipeline data.
+**The client needs a repeatable, auditable system that produces 20+ qualified acquisition prospects per week in title companies and property management firms across the Tampa Bay area.** Each prospect must meet the financial and management profile — **$1.5M+ annual revenue, $500K+ EBITDA proxy, existing management team** — and must include verified contact information, ownership structure, revenue/EBITDA estimates with confidence bands, source URLs, an acquisition-potential score, and CRM-ready pipeline data.
 
 Today, this work is manual, fragmented across public records and web sources, inconsistent in qualification, difficult to audit, and too slow to sustain a weekly 20-prospect pipeline at **>95% verified contact/financial information**.
 
@@ -28,8 +28,8 @@ AcquiScout must automate discovery, deduplication, scraping, structured extracti
 
 | Field | Value |
 |---|---|
-| **Client** | Lj Bryant — private equity / M&A advisory |
-| **Engagement shape** | $7k/mo, 6 months, competitive applicant pool (AgentTalent) |
+| **Client** | Private equity / M&A advisory (name withheld) |
+| **Engagement shape** | $7k/mo, 6 months, competitive applicant pool |
 | **Markets (v1)** | Tampa Bay area, Florida |
 | **Sectors (v1)** | Title companies, property management firms |
 | **Target profile** | $1.5M+ annual revenue, $500K+ EBITDA proxy, existing management team |
@@ -40,7 +40,7 @@ The agent is a **decision-support and pipeline-generation system** — not an au
 
 ### Why Tampa Bay (and not strict Tampa city)
 
-LJ's operating footprint spans the Tampa–St. Petersburg–Clearwater metro (Hillsborough, Pinellas, Pasco counties), not just the city limits. His business address (4902 Eisenhower Blvd, ZIP 33634) sits in a ZIP that straddles Tampa city and unincorporated Hillsborough — so strict city-limits targeting would exclude relevant targets. M&A sourcing operates on functional markets, not legal boundaries.
+The client's operating footprint spans the Tampa–St. Petersburg–Clearwater metro (Hillsborough, Pinellas, Pasco counties), not just the city limits. The client's business address sits in a ZIP that straddles Tampa city and unincorporated Hillsborough — so strict city-limits targeting would exclude relevant targets. M&A sourcing operates on functional markets, not legal boundaries.
 
 **v1 boundary (fixed):** Tampa Bay = **Hillsborough + Pinellas + Pasco** counties. Hernando, Manatee, and Sarasota are out of scope for v1 and can be enabled later via config.
 
@@ -216,7 +216,7 @@ Weekly deliverables:
 
 ### Client Assumptions — To Be Confirmed
 
-Because this project originated from an AgentTalent-style build-first engagement, most client questions do not have answers upfront. The following defaults are **explicit assumptions**, not final truth, and are configurable:
+Because this project originated from a build-first engagement, most client questions do not have answers upfront. The following defaults are **explicit assumptions**, not final truth, and are configurable:
 
 | Question | v1 Default Assumption |
 |---|---|
