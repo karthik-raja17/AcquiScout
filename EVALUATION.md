@@ -53,11 +53,58 @@ If a metric is not defined here, it cannot be claimed in a README, demo, or pitc
 ## 3. LLM-as-a-Judge (alignment only)
 
 - **Role:** the judge compares a generated prospect against the golden label and the rubric. It does **not** produce the pipeline score (see ADR-003).
-- **Rubric:** financial fit 30, management 20, ownership 15, contactability 15, market/strategic 10, data confidence 10. Each component is scored against anchored descriptions, not free-form opinion.
+- **Rubric:** the six weighted components and their anchors in **Scoring rubric (golden labels)** below. The judge compares against those anchors; it does not invent its own.
 - **Judge model:** API model (Groq/Gemini), pinned by version string in the run record. Changing the judge model requires a re-baseline.
 - **Determinism:** temperature 0, fixed prompt hash. Prompt edits invalidate prior run comparisons.
 - **Agreement monitoring:** judge vs human labels on the golden set; report Spearman correlation and mean absolute error per component.
 - **Failure mode:** if judge agreement drops below 0.7 Spearman, the judge is considered broken and the eval run is void.
+
+### Scoring rubric (golden labels)
+
+Human labels and the judge share one rubric. Weights are each component's maximum; anchors say how to earn it. Weights live in `ScoreWeights` (`src/acquiscout/schemas.py`); caps and the derived total live in `GoldenRecord` (`src/acquiscout/eval/golden.py`).
+
+| Component | Field | Max |
+|---|---|---:|
+| Financial fit | `score_financial` | 30 |
+| Management | `score_management` | 20 |
+| Ownership | `score_ownership` | 15 |
+| Contactability | `score_contactability` | 15 |
+| Market / strategic | `score_market` | 10 |
+| Data confidence | `score_data_confidence` | 10 |
+
+| Component | Full | Partial | Zero |
+|---|---|---|---|
+| Financial fit | G1 and G2 met, both source URLs, confidence `medium` or `high` → **30** | G1 and G2 met, but confidence `low` or one source URL missing → **15** | Either low band below its gate → **0** |
+| Management | Named principal with source **and** a real `management_evidence_url` → **20** | Named principal with source, no team evidence → **10** | No principal or no `principal_source_url` → **0** |
+| Ownership | Owner named, registry filing as source, legal form identifiable → **15** | Owner named and sourced, but the registry link is only a search, the form is inferred from the name, or ownership sits behind an entity → **7** | No identifiable owner or source → **0** |
+| Contactability | `contact_truth=valid` on a direct owner/principal line → **15** | Sourced, but `stale`, indirect, or of kind `website`/`linkedin` → **7** | `invalid` or no contact source → **0** |
+| Market / strategic | HQ in a target county, target sector, and at least one additional county → **10** | HQ in a target county and target sector only → **5** | HQ outside Hillsborough/Pinellas/Pasco, or outside the target sectors → **0** |
+| Data confidence | Revenue, EBITDA, contact, and owner each carry source + method + confidence `medium` or `high` → **10** | All four sourced, but at least one is `low` or proxy-derived (`benchmark_ratio`) → **5** | Any of the four lacks a source URL → **0** |
+
+Gates use the conservative low end of each band:
+
+- **G1:** `revenue_low_usd` ≥ 1,500,000
+- **G2:** `ebitda_low_usd` ≥ 500,000
+- **G3:** `principal_source_url` present and `management_evidence_url` is a real URL
+- **G4:** headquarters in Hillsborough, Pinellas, or Pasco; `primary_county` records where the mention was observed, not where the company is based
+
+| Verdict | Rule |
+|---|---|
+| `qualified` | G1, G2, G3, and G4 |
+| `semi_qualified` | G1 and G2, but not G3; **or** exactly one financial gate missed by no more than 20% (revenue ≥ 1,200,000 or EBITDA ≥ 400,000) with the other gates met; in both cases G4 must hold |
+| `rejected` | every other record, including any G4 failure |
+
+Derivation and clarifications:
+
+- The score ranks prospects; the verdict is decided by the gates. A high score never makes a record qualified.
+- `human_score_total` is derived as the sum of the six components. A stored total that disagrees with the sum is an error, and components may not exceed their caps.
+- An entity owner (for example, a member LLC) counts as a named principal. With no team page it scores Management 10.
+- Size is scored only in Financial Fit; Market / strategic scores geography and sector, never size.
+- Any additional county earns Market 10, whether or not it is one of the three target counties. Target county plus sector alone is 5.
+- For an out-of-geography entity, `primary_county` is the county where the mention was observed, the HQ county goes in `also_serves_counties`, Market is 0, and the verdict is `rejected` with a reason naming the HQ county (`DECISIONS.md` ADR-024). This overrides the usual Market anchor.
+- Ownership full credit requires a registry filing as the owner source; a company about page, or a registry search-results URL, scores partial 7.
+- Labeler mistakes (typos, arithmetic slips) never move a component; only evidence about the record does.
+- Data confidence scores the sourcing of revenue, EBITDA, contact, and owner. Management evidence is scored in Management, not here.
 
 ---
 

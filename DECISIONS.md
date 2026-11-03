@@ -137,6 +137,34 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
 - **Decision:** Keep `APPROVED` as the single authorization token. In learning mode it may only be requested at the Implementation checkpoint, which must first persist a pending decision (stage: `implementation approval`, with scope) to `.vibe-wise/progress.md`. Approval records the outcome in `progress.md` and `project-map.md`. Outside learning mode, `AGENTS.md` §5 alone governs.
 - **Consequence:** One interaction per step, no dual-gate deadlock, and an auditable record of the gatekeeper and the exact scope it authorized. A `skip` waives the reasoning loop, never the token.
 
+## ADR-021 — Golden-set source compromises (pilot)
+
+- **Status:** accepted
+- **Context:** During pilot labeling, some preferred sources were unavailable and some mentions share evidence. The golden set has to record those compromises instead of hiding them.
+- **Decision:** Record four compromises. (1) BisProfiles returned 404, so `golden-016` uses the Sunbiz detail page as its legal-name-only primary source, while `golden-017` uses the company facts page as its DBA-only primary source. (2) A mention's primary source must display the name that mention represents: the registry for legal-name mentions, the DBA site for DBA mentions. (3) `golden-016` and `golden-017` share a principal source; that is a merge signal, not a collapse, because their primary displayed names differ. (4) `golden-016`'s contact evidence is DBA-branded because the phone appears only on the DBA site; that is an auxiliary-source impurity, not a primary one.
+- **Consequence:** Dedup must not merge on shared principal evidence alone, and scoring must key on the primary displayed name rather than contact branding.
+
+## ADR-022 — Management evidence (G3) registry interpretation
+
+- **Status:** accepted
+- **Context:** Many founder-owned title and property-management firms have no marketing team page, so requiring one would reject firms whose management team is documented in state filings.
+- **Decision:** A state registry page (Sunbiz or DBPR) that lists at least two named officers with roles satisfies `management_evidence_url` for G3. A marketing team page is preferred but not required. A single named officer does not satisfy the rule.
+- **Consequence:** G3 evidence can come from the registry even when `management_evidence_url` equals `principal_source_url`, provided the page shows at least two named people. Management still scores 20 on that evidence.
+
+## ADR-023 — Risk flags for due diligence
+
+- **Status:** accepted
+- **Context:** `GoldenRecord` v1 has no `risk_flags` field, but acquisition screening can surface material due-diligence concerns that are independent of financial qualification. A free-text label would be unauditable, and an unsourced allegation would violate the no-fabrication rule.
+- **Decision:** v1 does not add `risk_flags` to the label schema. Material risks are tracked outside the schema, keyed by `company_id`, with `source_url`, `method`, `retrieved_at`, and `confidence` for every entry. Unsourced reports are not recorded.
+- **Consequence:** Risk evidence stays auditable and separate from qualification scores; the golden JSON artifacts remain unchanged. Adding structured risk fields requires a later schema version and a new ADR.
+
+## ADR-024 — Out-of-geography mentions
+
+- **Status:** accepted
+- **Context:** A target can surface through a local branch while its headquarters sits outside the three target counties. `primary_county` is defined per mention, so recording the observed county does not mean the business is market-based.
+- **Decision:** For an out-of-geography entity, `primary_county` records the county where the mention was observed; the HQ county goes in `also_serves_counties`; `score_market` is 0; `human_verdict` is `rejected` with a rejection reason naming the HQ county. Geography is a qualification gate (G4), not only a score component.
+- **Consequence:** `also_serves_counties` carries the HQ county for these rows, so "serves" also means "based in" there; a dedicated `hq_county` field would remove the ambiguity. Market full or partial credit applies only to entities headquartered in Hillsborough, Pinellas, or Pasco.
+
 ---
 
 ## Resolved client questions
