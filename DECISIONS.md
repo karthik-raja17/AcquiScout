@@ -165,6 +165,36 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
 - **Decision:** For an out-of-geography entity, `primary_county` records the county where the mention was observed; the HQ county goes in `also_serves_counties`; `score_market` is 0; `human_verdict` is `rejected` with a rejection reason naming the HQ county. Geography is a qualification gate (G4), not only a score component.
 - **Consequence:** `also_serves_counties` carries the HQ county for these rows, so "serves" also means "based in" there; a dedicated `hq_county` field would remove the ambiguity. Market full or partial credit applies only to entities headquartered in Hillsborough, Pinellas, or Pasco.
 
+## ADR-025 — Independence gate (G5)
+
+- **Status:** accepted
+- **Context:** A locally branded firm can be owned by a regional or national roll-up. Financial qualification alone would treat it as an acquisition target when it is not independently acquirable.
+- **Decision:** Add G5 as a qualification gate. A brand of a multi-brand roll-up, or a subsidiary of a larger operator, is `rejected` regardless of G1-G4, and `rejection_reason` names the parent or roll-up. The relationship should be evidenced by a source on the row.
+- **Consequence:** Roll-up brands cannot be `qualified` or `semi_qualified`. Scores still follow the anchors; only the verdict changes.
+
+## ADR-026 — golden_v1.json frozen at 19 records / 16 unique entities (contract deviation documented)
+
+- **Status:** accepted
+- **Date:** 2026-11-04
+- **Context:** `EVALUATION.md` §1 targets ~20 unique entities across 25-30 mentions. After two full screening rounds (17 candidates across PM and title verticals), the golden set reached 19 mentions / 16 unique entities. Screening yield was ~18%: 3 of 17 passed screening; of those, Milestone Title Services was full-researched and qualified at 72, Eaton Realty was full-researched and rejected on size (375 doors, $540K-$900K derived revenue), and Assurity Title passed screening but was not researched. The 500+ door / $1.5M+ revenue independent segment is genuinely rare in Tampa Bay. Pre-freeze verification (Checks A-I) confirmed all 19 records pass schema, score math, band sanity, verdict logic, contact rules, URL format, duplicate consistency, and known caveats. Zero blocking failures.
+- **Decision:** Freeze `data/raw/golden_v1.json` at 19 records / 16 unique entities. Amend `EVALUATION.md` §1 to reflect the actual contents. This is a **label baseline**, not a scored baseline — no eval run exists yet (pipeline not built).
+- **Coverage achieved:**
+  - 9 qualified (5 title: Turner, Tampa Title, T&A, ARETSI, Milestone; 4 PM: Greenacre, Resource, Wise, Condo Associates)
+  - 5 semi_qualified (Rent Solutions x3 with G2 miss; Hillsborough Title, Integrity First with no team page)
+  - 5 rejected (2 too small: RentWorks, Hoffman; 1 national subsidiary pair: Secured Land x2; 1 out-of-geography: Leland)
+  - 3 duplicate patterns: TYPE A (Secured Land: two DBAs), TYPE B (MYM Solutions: legal vs DBA), TYPE C (MYM Solutions: same name two sources)
+- **Rationale:** 19 well-curated records with this diversity are sufficient to measure pipeline qualification accuracy, rejection accuracy, and borderline sensitivity. Reaching 20 unique would require ~5+ more candidate screens at the observed yield. Version bumping (`golden_v2.json`) is the designed mechanism for expansion per `EVALUATION.md` §1.
+- **Alternatives considered:**
+  1. Expand to 20/25-30 before freeze — estimated 15-20 more screens; not economically viable at this stage
+  2. Relax the 500-door threshold — would compromise the brief
+  3. Include Arkansas in v1 — `PROJECT.md` §6 explicitly defers it
+- **Consequences:**
+  - `golden_v1.json` is frozen and immutable
+  - `scripts/freeze_golden.py` writes it once; refuses to overwrite
+  - Future expansions happen via `golden_v2.json` with a corresponding ADR
+  - Future eval runs reference this file by SHA-256
+- **SHA-256:** `1c33e7c85d931ddba6c5694da2818b59449eb197d0b05dd2ac0f743284b655a1`
+
 ---
 
 ## Resolved client questions

@@ -30,7 +30,8 @@ class Settings(BaseSettings):
 
     min_revenue_usd: int = 1_500_000
     min_ebitda_usd: int = 500_000
-    qualification_score_threshold: float = 60.0
+    # Note: verdicts are gate-based (G1-G5), not score-threshold-based.
+    # See EVALUATION.md §3 and ADR-022; do not add a score-based rule.
 
     weekly_raw: int = 500
     weekly_deduped: int = 150
