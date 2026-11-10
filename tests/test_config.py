@@ -51,3 +51,19 @@ def test_audit_rate_bounds() -> None:
 def test_empty_market_rejected() -> None:
     with pytest.raises(ValidationError):
         _settings(counties=[])
+
+
+def test_acquiscout_env_alias_is_honored(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACQUISCOUT_ENV", "prod")
+    assert _settings().app_env == "prod"
+
+
+def test_prod_rejects_fixture_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACQUISCOUT_ENV", "prod")
+    with pytest.raises(ValidationError, match="must be False"):
+        _settings(use_fixtures=True)
+
+
+def test_capture_and_replay_are_mutually_exclusive() -> None:
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        _settings(capture_search=True, use_fixtures=True)

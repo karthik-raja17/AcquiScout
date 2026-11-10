@@ -195,6 +195,133 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
   - Future eval runs reference this file by SHA-256
 - **SHA-256:** `1c33e7c85d931ddba6c5694da2818b59449eb197d0b05dd2ac0f743284b655a1`
 
+## ADR-027 — Discovery subgraph is a checkpointed LangGraph slice
+
+- **Status:** accepted
+- **Context:** The first vertical slice must fan out to web and registry search, survive
+  crashes without re-paying API calls, and leave a clean state when too many branches
+  fail. Raising inside a fan-in node forfeits that node's checkpoint.
+- **Decision:** `planner → Send(search tasks) → collect → route → bouncer → resolve`.
+  The router (not the bouncer) decides `bouncer` vs `abort_node`; `abort_node` returns
+  normally with `run_status="aborted"`, clears `raw_search_results`, and writes a clean
+  checkpoint. `raw_search_results` uses a custom reducer with `None` as the explicit
+  clear signal; `search_failure_count` uses `operator.add` and starts at `0`.
+  `Candidate`, `QueryHit`, and `SearchTask` live in `schemas.py`.
+- **Consequence:** Checkpoints are per super-step in `data/cache/checkpoints.db` with
+  WAL and a 5s busy timeout. A crash after search can resume without re-running the paid
+  calls. The earlier checkpoint still retains the raw results; clearing frees the active
+  state, not the history.
+
+## ADR-028 — GovFiles is a config-gated personal-project adapter
+
+- **Status:** accepted for the personal build
+- **Context:** GovFiles.dev is not in `PROJECT.md` §6's approved-source list, and its
+  live endpoint, ToS, and coverage are unconfirmed. The client's §12 question about
+  approved registries is still open.
+- **Decision:** Ship GovFiles behind the same `SearchProvider` protocol as Tavily, with
+  `GOVFILES_BASE_URL`/`GOVFILES_API_KEY` config, fixture-backed replay as the supported
+  path, and no hardcoded unverified endpoint. Record it as a personal-project exception;
+  revisit before any client or production run.
+- **Consequence:** The DAG is testable without confirming the vendor. Live GovFiles use
+  fails closed when the base URL is absent.
+
+## ADR-029 — Dev fixtures are captured at the wrapper and never active in prod
+
+- **Status:** accepted
+- **Context:** Free-tier credits are finite, and a shared fixture repository would
+  redistribute third-party content and personal names from registry records.
+- **Decision:** `dev_fixtures/` is gitignored. Capture happens in the provider wrapper
+  (`ACQUISCOUT_CAPTURE_SEARCH` / `ACQUISCOUT_CAPTURE_PLANNER`); replay
+  (`ACQUISCOUT_USE_FIXTURES`) short-circuits before cache and network and raises when a
+  fixture is missing. `app_env` accepts `ACQUISCOUT_ENV` or `APP_ENV`; a `Settings`
+  validator rejects fixture flags when `app_env` is `prod`. The fixture hash includes
+  provider + query + params + version (and model/prompt for the planner).
+  `dev.freeze_from_checkpoint` is an optional, documented-lossy rescue tool.
+- **Consequence:** Every developer captures their own fixtures once. A misconfigured prod
+  deploy cannot construct `Settings`, so it fails at startup instead of serving stale data.
+
+## ADR-030 — ICP hints come from broad vocabulary, not fitted thresholds
+
+- **Status:** accepted
+- **Context:** Deriving ICP numbers from the nine qualified golden records and then
+  evaluating on the same set is train/test leakage. `employee_headcount` and
+  `founded_year` were added in v2, but the v1 golden records lack them.
+- **Decision:** The planner receives Tier 1/2 vocabulary only: sector terms, geography,
+  entity suffixes, registry terms, associations, and evidence indicators. Numeric gates
+  remain business rules from `PROJECT.md`/`EVALUATION.md`; they are not fitted to the
+  golden set. Headcount and founding year are context, not gates. Golden v1 shapes the
+  vocabulary, so v1 scores are an in-sample upper bound.
+- **Consequence:** A clean generalization estimate requires a held-out `golden_v2` or
+  later. Do not claim v1 scores as out-of-sample performance.
+
+## ADR-031 — Search failures go to a DLQ and degrade the run
+
+- **Status:** accepted
+- **Context:** A single provider failure should not discard the other branches' work, but
+  a mostly failed run should not proceed as if it were healthy.
+- **Decision:** Failed searches are pushed to Redis `dlq:search` with
+  `{run_id, provider, query, error, error_type, attempts, created_at, traceback,
+  thread_id}`, falling back to `data/dlq/search_failures.jsonl` and never raising. The
+  run continues when failures are at or below `failure_abort_ratio` (default 50%) and
+  routes to `abort_node` above it. Dead entries are parked in `dlq:search:dead` by a
+  future retry job.
+- **Consequence:** Partial data survives; the abort path writes a clean, inspectable
+  checkpoint. Tracebacks are stored for debugging and must not be logged with secrets.
+
+## ADR-032 — Candidates carry provenance and registry resolution is separate
+
+- **Status:** accepted
+- **Context:** `list[str]` URLs lost the query, provider, title, and snippet that made a
+  candidate auditable. Registry results may have an entity ID but no crawlable page.
+- **Decision:** `Candidate` carries `identifier` + `identifier_kind` (`url` or
+  `registry_id`), `source_type`, `provider`, optional display fields, `found_by`
+  (`QueryHit` per query), `first_seen_at`, optional `crawl_url`, `resolution_status`, and
+  `review_flags`. The bouncer canonicalizes URLs (lowercase host, strip `www`, tracking
+  params, fragments, trailing slash), dedups, applies `SourcePolicy` once, and caps URLs
+  per domain. A separate `resolve` node enriches registry candidates and records failure.
+- **Consequence:** Downstream stages know what they hold and which queries produced it.
+  Registry resolution can fail without dropping the candidate.
+
+## ADR-033 — Golden v2 adds context fields without changing the rubric
+
+- **Status:** accepted (draft labels)
+- **Context:** The next ICP iteration needs headcount and founding-year context, but the
+  six-component rubric and the frozen v1 contract must not change.
+- **Decision:** `GoldenRecord` accepts `employee_headcount` and `founded_year`, exported
+  from `golden_v2.xlsx` as `2.0-draft`. `golden_v1.json` stays frozen and untouched. The
+  new fields are context only and do not contribute to `human_score_total` or the verdict.
+- **Consequence:** Golden scripts accept `--xlsx`/`--output`; v2 remains a draft until
+  its labels are reviewed and a separate freeze ADR is written.
+
+## ADR-034 — Discovery runs are logged; export is opt-in and completed-only
+
+- **Status:** accepted
+- **Context:** Checkpoints and the DLQ are gitignored, so a run's outcome was not
+  visible in the repository. Exporting every run would fill `data/generated/` with
+  aborted and duplicate artifacts.
+- **Decision:** The CLI appends exactly one Markdown row per `run_id` to
+  `docs/discovery-runs.md` (idempotent upsert), including status, plan/failure
+  counts, candidate count, provider-error count, abort reason, and checkpoint path.
+  `--export` writes a completed run to `data/generated/discovery/<run_id>.json`;
+  aborted runs are logged but never exported. There is no automatic export.
+- **Consequence:** Every run leaves a committed, human-readable audit row without
+  committing bulky or failed artifacts. Successful-run JSON is a deliberate action.
+
+## ADR-035 — Discovery planner uses `openai/gpt-oss-20b` and `planner_v2`
+
+- **Status:** accepted
+- **Context:** On 2026-11-10 the live planner returned HTTP 404 for
+  `llama-3.1-8b-instant`, which Groq no longer serves. The first successful planner
+  call also copied the schema literal `"tavily_web | govfiles_registry"` into every
+  task's `node`, so validation rejected the plan and fell back deterministically.
+- **Decision:** Default `GROQ_MODEL` is `openai/gpt-oss-20b` and the prompt version is
+  `planner_v2`. The prompt gives one concrete example per node and states that `node`
+  must be exactly `tavily_web` or `govfiles_registry`. Validation repairs a combined
+  literal by alternating the two node types, then still rejects unknown nodes or an
+  empty plan.
+- **Consequence:** Changing the model or prompt invalidates planner cache entries and
+  planner fixtures; re-capture with `ACQUISCOUT_CAPTURE_PLANNER=1`.
+
 ---
 
 ## Resolved client questions

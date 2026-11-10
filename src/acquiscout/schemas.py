@@ -13,14 +13,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
+from urllib.parse import urlsplit
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     HttpUrl,
+    TypeAdapter,
     computed_field,
+    field_validator,
     model_validator,
 )
 
@@ -279,3 +282,53 @@ class Prospect(BaseModel):
             and self.revenue.value_usd is not None
             and self.ebitda.value_usd is not None
         )
+
+
+class QueryHit(BaseModel):
+    """One search query that surfaced a candidate."""
+
+    query: str = Field(min_length=1)
+    search_plan_index: int = Field(ge=0)
+    provider: str = Field(min_length=1)
+    found_at: datetime = Field(default_factory=_now)
+
+
+class Candidate(BaseModel):
+    """A deduplicated discovery result with its provenance preserved."""
+
+    identifier: str = Field(min_length=1)
+    identifier_kind: Literal["url", "registry_id"]
+    source_type: Literal["web", "registry"]
+    provider: str = Field(min_length=1)
+    title: str | None = None
+    snippet: str | None = None
+    crawl_url: str | None = None
+    resolution_status: Literal["none", "resolved", "failed"] = "none"
+    review_flags: list[str] = Field(default_factory=list)
+    found_by: list[QueryHit] = Field(default_factory=list)
+    first_seen_at: datetime = Field(default_factory=_now)
+
+    @field_validator("crawl_url")
+    @classmethod
+    def _validate_crawl_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return str(TypeAdapter(HttpUrl).validate_python(value))
+
+    @model_validator(mode="after")
+    def _identifier_matches_kind(self) -> Self:
+        if self.identifier_kind == "url":
+            parts = urlsplit(self.identifier)
+            if parts.scheme not in {"http", "https"} or not parts.hostname:
+                raise ValueError("url candidates require an http(s) identifier")
+        return self
+
+
+class SearchTask(BaseModel):
+    """One validated task emitted by the planner."""
+
+    task_id: str = Field(min_length=1)
+    node: Literal["tavily_web", "govfiles_registry"]
+    query: str = Field(min_length=1)
+    params: dict[str, object] = Field(default_factory=dict)
+    search_plan_index: int = Field(ge=0)

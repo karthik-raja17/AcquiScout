@@ -77,6 +77,9 @@ class GoldenRecord(BaseModel):
     principal_source_url: str | None = None
     management_evidence_url: str | None = None
 
+    employee_headcount: str | None = None
+    founded_year: int | None = None
+
     human_verdict: Verdict
     rejection_reason: str | None = None
 

@@ -113,7 +113,8 @@ Every prospect record must answer:
 ### In Scope (v1)
 
 - Discovery from approved web sources and public registries.
-- Search/scraping via Tavily/Serper and Firecrawl/Jina AI Reader.
+- Search/scraping via Tavily/Serper and Firecrawl/Jina AI Reader, plus a GovFiles
+  registry adapter (personal-project exception, ADR-028).
 - Structured company profiles using Pydantic v2.
 - Entity resolution and deduplication.
 - Revenue and EBITDA proxy estimation with explicit confidence bands and methods.
@@ -230,6 +231,11 @@ Because this project originated from a build-first engagement, most client quest
 | Contact verification | One authoritative source + one corroborating source, or two independent sources |
 | Weekly report deadline | Friday CSV + dashboard + Markdown market summary |
 | "Verified" definition | Source-backed and/or human-audited — not audited financial truth |
+
+Discovery note: GovFiles.dev is used as a **personal-project exception** behind a
+config-gated adapter while its ToS, endpoint, and coverage are unconfirmed (ADR-028). It
+is not yet an approved client source. Headcount and founding year in the draft v2 labels
+are context only; they are not qualification gates (ADR-033).
 
 ---
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import date
@@ -44,8 +45,18 @@ def describe(exc: Exception) -> str:
     return str(exc)
 
 
-def main() -> int:
-    workbook = load_workbook(XLSX_PATH)
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Export a golden workbook to JSON")
+    parser.add_argument("--xlsx", type=Path, default=XLSX_PATH)
+    parser.add_argument("--output", type=Path, default=OUTPUT_PATH)
+    parser.add_argument("--schema-version", default=None)
+    parser.add_argument("--status", default="pilot")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    workbook = load_workbook(args.xlsx)
     metadata = read_metadata(workbook["Metadata"])
     missing = {"market_id", "unit"} - set(metadata)
     if missing:
@@ -76,15 +87,16 @@ def main() -> int:
         return 1
 
     payload = {
-        "schema_version": "1.0-pilot",
+        "schema_version": args.schema_version or metadata.get("schema_version", "2.0-draft"),
         "market_id": metadata["market_id"],
         "unit": metadata["unit"],
-        "status": "pilot",
+        "status": args.status,
         "exported_at": date.today().isoformat(),
         "records": [record.model_dump(mode="json") for record in records],
     }
-    OUTPUT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"Wrote {len(records)} records to {OUTPUT_PATH}")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"Wrote {len(records)} records to {args.output}")
     return 0
 
 

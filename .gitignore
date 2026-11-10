@@ -22,8 +22,13 @@ venv/
 data/generated/*
 !data/generated/.gitkeep
 data/cache/
+data/dlq/
+dev_fixtures/
+data/raw/*.bak*
 *.sqlite
 *.db
+*.db-wal
+*.db-shm
 
 # knowledge graph / local tooling
 graphify-out/

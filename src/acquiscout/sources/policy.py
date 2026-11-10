@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 from dataclasses import dataclass
+from typing import Literal
 from urllib.parse import urlsplit
+
+from acquiscout.schemas import Candidate
 
 DENIED_HOSTS: frozenset[str] = frozenset(
     {
@@ -17,6 +21,12 @@ DENIED_HOSTS: frozenset[str] = frozenset(
         "wsj.com",
         "ft.com",
         "glassdoor.com",
+        "bbb.org",
+        "yelp.com",
+        "yellowpages.com",
+        "wikipedia.org",
+        "reddit.com",
+        "quora.com",
     }
 )
 
@@ -28,11 +38,35 @@ BLOCKED_HOSTNAMES: frozenset[str] = frozenset(
     {"localhost", "localhost.localdomain", "ip6-localhost", "metadata.google.internal"}
 )
 
+DENY_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"/wp-admin(?:/|$)",
+        r"/login(?:/|$)",
+        r"/signup(?:/|$)",
+        r"/tag(?:/|$)",
+        r"/category(?:/|$)",
+        r"/author(?:/|$)",
+    )
+)
+
+REGISTRY_PDF_HOSTS: frozenset[str] = frozenset(
+    {"sunbiz.org", "search.sunbiz.org", "dos.fl.gov", "efile.sunbiz.org", "flrules.org"}
+)
+
+GENERIC_PDF_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (r"/brochure", r"/flyer", r"/menu", r"/catalog", r"/whitepaper", r"/ebook")
+)
+
+Classification = Literal["allow", "deny", "registry_pdf"]
+
 
 @dataclass(frozen=True)
 class PolicyDecision:
     allowed: bool
     reason: str | None = None
+    classification: Classification = "allow"
 
 
 class PolicyViolation(RuntimeError):
@@ -42,8 +76,12 @@ class PolicyViolation(RuntimeError):
         self.reason = reason
 
 
+def _host_matches(host: str, domains: frozenset[str]) -> bool:
+    return host in domains or host.endswith(tuple(f".{domain}" for domain in domains))
+
+
 class SourcePolicy:
-    """Deny-list plus SSRF guard. Deny wins over any allow-list."""
+    """Deny-list, path heuristics, PDF classification, and SSRF guard."""
 
     def __init__(self, denied_hosts: frozenset[str] = DENIED_HOSTS) -> None:
         self._denied = denied_hosts
@@ -51,27 +89,48 @@ class SourcePolicy:
     def check(self, url: str) -> PolicyDecision:
         parts = urlsplit(url)
         if parts.scheme not in ALLOWED_SCHEMES:
-            return PolicyDecision(False, f"scheme not allowed: {parts.scheme or 'none'}")
+            return PolicyDecision(False, f"scheme not allowed: {parts.scheme or 'none'}", "deny")
+
         host = (parts.hostname or "").lower().rstrip(".")
         if not host:
-            return PolicyDecision(False, "missing host")
+            return PolicyDecision(False, "missing host", "deny")
         if host in BLOCKED_HOSTNAMES:
-            return PolicyDecision(False, f"blocked hostname: {host}")
-        if host in self._denied or host.endswith(tuple(f".{d}" for d in self._denied)):
-            return PolicyDecision(False, f"prohibited domain: {host}")
+            return PolicyDecision(False, f"blocked hostname: {host}", "deny")
+        if _host_matches(host, self._denied):
+            return PolicyDecision(False, f"prohibited domain: {host}", "deny")
+
         try:
             address = ipaddress.ip_address(host)
         except ValueError:
-            return PolicyDecision(True)
-        blocked = (
+            address = None
+        if address is not None and (
             address.is_private
             or address.is_loopback
             or address.is_link_local
             or address.is_reserved
-        )
-        if blocked:
-            return PolicyDecision(False, "private or loopback address")
+        ):
+            return PolicyDecision(False, "private or loopback address", "deny")
+
+        path = parts.path or "/"
+        if any(pattern.search(path) for pattern in DENY_PATTERNS):
+            return PolicyDecision(False, f"prohibited path: {path}", "deny")
+
+        if path.lower().endswith(".pdf"):
+            if _host_matches(host, REGISTRY_PDF_HOSTS):
+                return PolicyDecision(True, "registry_pdf", "registry_pdf")
+            if any(pattern.search(path.lower()) for pattern in GENERIC_PDF_PATTERNS):
+                return PolicyDecision(False, f"marketing pdf: {path}", "deny")
+            return PolicyDecision(True, "unclassified_pdf", "registry_pdf")
+
         return PolicyDecision(True)
+
+    def classify(self, url: str) -> Classification:
+        return self.check(url).classification
+
+    def classify_candidate(self, candidate: Candidate) -> PolicyDecision:
+        if candidate.identifier_kind == "registry_id":
+            return PolicyDecision(True)
+        return self.check(candidate.identifier)
 
     def enforce(self, url: str) -> None:
         decision = self.check(url)
@@ -84,9 +143,14 @@ class SourcePolicy:
 
 __all__ = [
     "ALLOWED_SCHEMES",
+    "BLOCKED_HOSTNAMES",
+    "Classification",
     "DENIED_HOSTS",
     "DENIED_SUFFIXES",
+    "DENY_PATTERNS",
+    "GENERIC_PDF_PATTERNS",
     "PolicyDecision",
     "PolicyViolation",
+    "REGISTRY_PDF_HOSTS",
     "SourcePolicy",
 ]

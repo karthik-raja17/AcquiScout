@@ -14,15 +14,15 @@ Do not substitute without an ADR in `DECISIONS.md`.
 | Orchestration | LangGraph state machine + subgraphs |
 | API | FastAPI + Uvicorn |
 | Dashboard | Streamlit |
-| Storage | PostgreSQL (managed in prod), Redis (cache + queue state) |
-| Search/scrape | Tavily/Serper, Firecrawl/Jina AI Reader |
-| Dedup | `rapidfuzz` |
+| Storage | PostgreSQL (managed in prod), Redis (cache + queue state), SQLite (local discovery cache/checkpoints) |
+| Search/scrape | Tavily/Serper, Firecrawl/Jina AI Reader; GovFiles registry adapter (personal-project exception, ADR-028) |
+| Dedup | URL canonicalization in discovery; `rapidfuzz` entity resolution planned |
 | Retries | `tenacity` + DLQ |
 | Guardrails | `llm-guard`, approved-source policy |
 | Tests / lint | `pytest`, `ruff` |
 | Deploy | Docker Compose (local); Render/Railway 3-service (prod) |
 
-Local inference: Llama-3-8B 4-bit on the 8 GB GPU only for extraction. Reasoning/scale goes to Groq/Gemini.
+Local inference: Llama-3-8B 4-bit on the 8 GB GPU only for extraction. The discovery planner uses Groq `openai/gpt-oss-20b` (ADR-035); reasoning/scale otherwise goes to Groq/Gemini.
 
 ## 2. Hard constraints
 
@@ -37,8 +37,9 @@ Local inference: Llama-3-8B 4-bit on the 8 GB GPU only for extraction. Reasoning
 
 ```
 src/acquiscout/     application code (config, schemas, pipeline)
-  pipeline/         LangGraph nodes (discover → report)
-  sources/          approved-source clients + policy
+  pipeline/         LangGraph discovery subgraph (state, nodes, wiring)
+  sources/          approved-source clients, policy, cache, fixtures, DLQ
+  dev/              developer-only helpers (optional fixture rescue)
   services/         dedup, scoring, verification, export
 api/                FastAPI app
 dashboard/          Streamlit app
@@ -46,6 +47,9 @@ scripts/            one-off operators (ingest golden set, backfills)
 tests/              unit + eval-gate tests
 data/raw/           hand-collected inputs (committed: golden set)
 data/generated/     pipeline output (gitignored)
+data/cache/         SQLite search cache + checkpoints (gitignored)
+data/dlq/           failed-search fallback log (gitignored)
+dev_fixtures/       per-developer capture/replay fixtures (gitignored)
 docs/               longer-form notes
 ```
 
@@ -59,7 +63,16 @@ pip install -e ".[dev]"
 python -m pytest -q --tb=short
 ruff check . ; ruff format --check .
 python -m acquiscout.smoke          # pipeline wiring check, no network
+python -m acquiscout.pipeline       # live discovery run (needs keys)
+python -m acquiscout.pipeline --export   # write a completed run to data/generated/discovery/
 docker compose up -d postgres redis
+
+# Dev fixtures: capture once, replay for free afterwards.
+$env:ACQUISCOUT_CAPTURE_SEARCH=1; $env:ACQUISCOUT_CAPTURE_PLANNER=1
+python -m acquiscout.pipeline
+$env:ACQUISCOUT_CAPTURE_SEARCH=0; $env:ACQUISCOUT_CAPTURE_PLANNER=0
+$env:ACQUISCOUT_USE_FIXTURES=1
+python -m acquiscout.pipeline       # no external calls
 ```
 
 ## 5. Workflow for agents
@@ -73,14 +86,19 @@ docker compose up -d postgres redis
 
 ## 6. Eval discipline
 
-- `golden_v1.json` is a contract — label it, freeze it, version it.
+- `golden_v1.json` is a frozen contract — label it, freeze it, version it.
+- `golden_v2.xlsx` is a **draft** schema extension (`2.0-draft`): `employee_headcount`
+  and `founded_year` are context fields, not rubric components. Do not re-freeze v1.
 - Any change that touches extraction, estimation, dedup, or scoring must run the eval suite.
 - A regression outside the thresholds in `EVALUATION.md` blocks merge.
 - Do not claim metrics that are not in the latest eval run.
+- Discovery fixtures (`dev_fixtures/`) are per-developer, gitignored, and never active in
+  prod; `Settings` refuses to construct with fixture flags when `app_env` is `prod`.
 
 ## 7. Cost and performance
 
-- Cache-aside in Redis for search/scrape results; keys include URL + extractor version.
+- Redis cache-aside for scrapes (URL + extractor version); SQLite search cache for
+  discovery (provider + query + params + version). Fixture replay is dev-only.
 - Route: cheap/local model for extraction, API model for judgment.
 - Log tokens, latency, and cost per prospect; target <$5 per qualified prospect.
 - Prefer batch calls and compressed payloads; never dump full pages into logs.

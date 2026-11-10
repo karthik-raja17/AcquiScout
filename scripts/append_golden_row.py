@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
 import sys
@@ -104,11 +105,13 @@ def append_rows(
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("usage: python scripts/append_golden_row.py <records.json>", file=sys.stderr)
-        return 2
-    records = load_records(argv[1])
-    written, total = append_rows("data/raw/golden_v1.xlsx", "Data", records)
+    parser = argparse.ArgumentParser(description="Append golden records to a workbook")
+    parser.add_argument("records_json")
+    parser.add_argument("--xlsx", type=Path, default=Path("data/raw/golden_v1.xlsx"))
+    parser.add_argument("--sheet", default="Data")
+    args = parser.parse_args(argv)
+    records = load_records(args.records_json)
+    written, total = append_rows(args.xlsx, args.sheet, records)
     if len(written) == 1:
         company_id, row = written[0]
         print(f"Appended {company_id} at row {row}; {total} records in Data")
@@ -120,4 +123,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main(sys.argv[1:]))

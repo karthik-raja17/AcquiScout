@@ -51,3 +51,12 @@ Sources conflict:
 - `primary_county = hillsborough` (observation location) with `also_serves_counties = orange`
 - `score_market = 0` reflects the geographic mismatch
 - Recorded as rejected to teach the pipeline that statewide firms with a Tampa branch are not the target profile
+
+## golden v2 draft — context fields
+
+`golden_v2.xlsx` (`2.0-draft`) adds `employee_headcount` and `founded_year` columns.
+At export, headcount is `NOT_FOUND` on all 19 rows and founding year is present on 17.
+They are context for search vocabulary and review, not rubric components:
+`human_score_total` and the verdict rules are unchanged (ADR-033). The v1 JSON stays
+frozen and untouched. Because the search vocabulary was shaped by v1, v1 scores are an
+in-sample upper bound until a held-out version exists (ADR-030).

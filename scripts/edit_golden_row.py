@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
 import sys
@@ -83,11 +84,13 @@ def edit_row(
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("usage: python scripts/edit_golden_row.py <record.json>", file=sys.stderr)
-        return 2
-    record = load_record(argv[1])
-    row, before, after = edit_row(XLSX_PATH, SHEET, record)
+    parser = argparse.ArgumentParser(description="Edit one golden workbook row")
+    parser.add_argument("record_json")
+    parser.add_argument("--xlsx", type=Path, default=XLSX_PATH)
+    parser.add_argument("--sheet", default=SHEET)
+    args = parser.parse_args(argv)
+    record = load_record(args.record_json)
+    row, before, after = edit_row(args.xlsx, args.sheet, record)
     print(f"Edited {record['company_id']} at row {row}")
     for key in REPORT_FIELDS:
         print(f"  {key}: {before[key]!r} -> {after[key]!r}")
@@ -95,4 +98,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main(sys.argv[1:]))

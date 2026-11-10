@@ -100,6 +100,20 @@ def test_unknown_column_is_rejected() -> None:
         parse_sheet_row(sheet_row(unexpected_column="value"))
 
 
+def test_v2_context_fields_are_accepted() -> None:
+    record = parse_sheet_row(sheet_row(employee_headcount="15-50", founded_year=1985))
+
+    assert record.employee_headcount == "15-50"
+    assert record.founded_year == 1985
+
+
+def test_v2_context_sentinels_become_none() -> None:
+    record = parse_sheet_row(sheet_row(employee_headcount="NOT_FOUND", founded_year="NOT_FOUND"))
+
+    assert record.employee_headcount is None
+    assert record.founded_year is None
+
+
 def test_record_serializes_computed_total() -> None:
     payload = parse_sheet_row(sheet_row()).model_dump(mode="json")
     assert payload["human_score_total"] == 47
