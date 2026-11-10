@@ -298,6 +298,7 @@ class Candidate(BaseModel):
 
     identifier: str = Field(min_length=1)
     identifier_kind: Literal["url", "registry_id"]
+    registry_jurisdiction: str | None = None
     source_type: Literal["web", "registry"]
     provider: str = Field(min_length=1)
     title: str | None = None

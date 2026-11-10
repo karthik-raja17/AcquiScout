@@ -1,0 +1,10 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "discovery": {
+      "path": "./src/acquiscout/pipeline/studio.py:graph",
+      "description": "Planner -> Tavily/GovFiles search -> collect -> router -> bouncer/abort -> resolve"
+    }
+  },
+  "env": ".env"
+}

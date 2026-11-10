@@ -67,3 +67,15 @@ def test_prod_rejects_fixture_flags(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_capture_and_replay_are_mutually_exclusive() -> None:
     with pytest.raises(ValidationError, match="mutually exclusive"):
         _settings(capture_search=True, use_fixtures=True)
+
+
+def test_langsmith_tracing_requires_key() -> None:
+    with pytest.raises(ValidationError, match="LANGSMITH_API_KEY"):
+        _settings(langsmith_tracing=True)
+
+
+def test_langsmith_tracing_accepts_key() -> None:
+    settings = _settings(langsmith_tracing=True, langsmith_api_key="test-key")
+
+    assert settings.langsmith_tracing is True
+    assert settings.langsmith_project == "acquiscout"

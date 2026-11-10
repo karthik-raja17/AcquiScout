@@ -65,6 +65,7 @@ ruff check . ; ruff format --check .
 python -m acquiscout.smoke          # pipeline wiring check, no network
 python -m acquiscout.pipeline       # live discovery run (needs keys)
 python -m acquiscout.pipeline --export   # write a completed run to data/generated/discovery/
+$env:PYTHONIOENCODING='utf-8'; langgraph dev   # graph shape in LangGraph Studio
 docker compose up -d postgres redis
 
 # Dev fixtures: capture once, replay for free afterwards.
@@ -101,6 +102,8 @@ python -m acquiscout.pipeline       # no external calls
   discovery (provider + query + params + version). Fixture replay is dev-only.
 - Route: cheap/local model for extraction, API model for judgment.
 - Log tokens, latency, and cost per prospect; target <$5 per qualified prospect.
+- LangSmith tracing is opt-in (`LANGSMITH_TRACING`); the app bridges settings to the
+  LangChain/LangSmith env vars at run start. Never log the LangSmith key.
 - Prefer batch calls and compressed payloads; never dump full pages into logs.
 
 ## 8. Security

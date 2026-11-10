@@ -22,6 +22,7 @@ from acquiscout.schemas import Candidate, QueryHit, SearchTask
 from acquiscout.sources.cache import SQLiteCache, cache_key
 from acquiscout.sources.dlq import push_failure
 from acquiscout.sources.fixtures import FixtureMissing, fixture_key, load_fixture, save_fixture
+from acquiscout.sources.govfiles import GovFilesSearchProvider
 from acquiscout.sources.planner import GroqPlanner, _extract_tasks, build_prompt
 from acquiscout.sources.policy import SourcePolicy
 from acquiscout.sources.tavily import TAVILY_VERSION, TavilySearchProvider
@@ -317,6 +318,67 @@ async def test_planner_capture_writes_fixture(tmp_path: Path) -> None:
 
     assert tasks[0].query == "q"
     assert list((tmp_path / "planner" / "groq").glob("*.json"))
+
+
+@pytest.mark.asyncio
+async def test_govfiles_live_contract_and_resolution() -> None:
+    settings = make_settings(
+        govfiles_api_key="test-key",
+        govfiles_base_url="https://api.govfiles.dev",
+        use_fixtures=False,
+        capture_search=False,
+    )
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["api_key"] = request.headers.get("x-api-key")
+        if request.url.path == "/v2/companies/search":
+            seen["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "match": {"matched_field": "name"},
+                            "company": {
+                                "entity_number": "H30572",
+                                "jurisdiction_code": "us_fl",
+                                "legal_name": "HILLSBOROUGH TITLE, INC.",
+                                "entity_url": "https://search.sunbiz.org/example",
+                            },
+                        }
+                    ]
+                },
+            )
+        if request.url.path == "/v2/companies/us_fl/H30572":
+            return httpx.Response(200, json={"entity_url": "https://search.sunbiz.org/example"})
+        return httpx.Response(404)
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = GovFilesSearchProvider(settings, http=http)
+    results = await provider.search(task(0, "govfiles_registry", "Hillsborough Title Sunbiz"))
+
+    assert seen["api_key"] == "test-key"
+    assert seen["body"]["q"] == "Hillsborough Title"
+    assert seen["body"]["jurisdictions"] == "us_fl"
+    assert results == [
+        {
+            "entity_id": "H30572",
+            "jurisdiction": "us_fl",
+            "legal_name": "HILLSBOROUGH TITLE, INC.",
+            "url": "https://search.sunbiz.org/example",
+        }
+    ]
+
+    candidate = Candidate(
+        identifier="H30572",
+        identifier_kind="registry_id",
+        registry_jurisdiction="us_fl",
+        source_type="registry",
+        provider="govfiles_registry",
+    )
+    assert await provider.resolve(candidate) == "https://search.sunbiz.org/example"
+    await provider.aclose()
 
 
 def test_planner_repairs_combined_node_literal() -> None:

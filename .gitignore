@@ -35,6 +35,9 @@ graphify-out/
 graphify/
 .rtk/
 
+# LangGraph dev server state
+.langgraph_api/
+
 # learning notes (VibeWise)
 .vibe-wise/
 

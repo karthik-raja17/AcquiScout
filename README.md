@@ -62,6 +62,53 @@ python -m acquiscout.pipeline       # no external calls
 `python -m acquiscout.dev.freeze_from_checkpoint <thread_id>` rescues a lossy copy from
 a pre-bouncer checkpoint. Fixture flags are refused when `ACQUISCOUT_ENV=prod`.
 
+## Observability (LangSmith)
+
+Tracing is opt-in. Add these to `.env`:
+
+```dotenv
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...
+LANGSMITH_PROJECT=acquiscout
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+ACQUISCOUT_AGENT_ID=research-agent
+ACQUISCOUT_AGENT_ENVIRONMENT=local
+```
+
+`python -m acquiscout.pipeline` then sends the graph run to LangSmith, where the planner,
+search fan-out, collect, router, bouncer, abort, and resolve steps are visible as a trace.
+Traces carry `agent_id` and `agent_environment` metadata and use `discovery-<run_id>` as
+the run name. The `ACQUISCOUT_AGENT_*` names keep that metadata separate from LangSmith's
+own agent-routing variables.
+
+## Graph shape (LangGraph Studio)
+
+`langgraph.json` exposes the compiled discovery graph. Start the local server:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+langgraph dev
+```
+
+Open the Studio URL it prints:
+
+```text
+https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
+```
+
+The graph shows `planner`, `tavily_web`, `govfiles_registry`, `collect`,
+`route_after_search`, `bouncer`, `abort_node`, and `resolve`. Use `--no-browser` to skip
+auto-opening the browser. On Windows, setting `PYTHONIOENCODING=utf-8` avoids the CLI's
+emoji help/startup crash under the default cp1252 console encoding. If port 2024 is
+already taken by a stale server, use `--port 2025` and point Studio at
+`http://127.0.0.1:2025`.
+
+The Studio factory intentionally does not create the SQLite search cache; doing blocking
+file I/O inside the async graph factory triggers LangGraph's `BlockingError`. The normal
+CLI path still uses the cache.
+Tracing is explicitly disabled when `LANGSMITH_TRACING` is false; a missing key with
+tracing enabled fails at `Settings` construction.
+
 ## Layout
 
 ```

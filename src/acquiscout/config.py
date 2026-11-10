@@ -41,6 +41,31 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ACQUISCOUT_USE_FIXTURES", "USE_FIXTURES"),
     )
 
+    langsmith_tracing: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2"),
+    )
+    langsmith_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"),
+    )
+    langsmith_project: str = Field(
+        default="acquiscout",
+        validation_alias=AliasChoices("LANGSMITH_PROJECT", "LANGCHAIN_PROJECT"),
+    )
+    langsmith_endpoint: str = Field(
+        default="https://api.smith.langchain.com",
+        validation_alias=AliasChoices("LANGSMITH_ENDPOINT", "LANGCHAIN_ENDPOINT"),
+    )
+    langsmith_agent_id: str = Field(
+        default="research-agent",
+        validation_alias="ACQUISCOUT_AGENT_ID",
+    )
+    langsmith_agent_environment: str = Field(
+        default="local",
+        validation_alias="ACQUISCOUT_AGENT_ENVIRONMENT",
+    )
+
     counties: list[County] = Field(
         default_factory=lambda: [County.HILLSBOROUGH, County.PINELLAS, County.PASCO]
     )
@@ -76,7 +101,7 @@ class Settings(BaseSettings):
     search_max_results: int = 10
     failure_abort_ratio: float = 0.5
     max_urls_per_domain: int = 3
-    search_prompt_version: str = "planner_v2"
+    search_prompt_version: str = "planner_v3"
     search_hints_version: str = "search_hints_v1"
     groq_model: str = "openai/gpt-oss-20b"
 
@@ -161,6 +186,8 @@ class Settings(BaseSettings):
             raise ValueError("capture_search and use_fixtures are mutually exclusive")
         if self.capture_planner and self.use_fixtures:
             raise ValueError("capture_planner and use_fixtures are mutually exclusive")
+        if self.langsmith_tracing and self.langsmith_api_key is None:
+            raise ValueError("LANGSMITH_API_KEY is required when LANGSMITH_TRACING is enabled")
         return self
 
 

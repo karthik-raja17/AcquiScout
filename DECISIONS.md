@@ -223,7 +223,13 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
   path, and no hardcoded unverified endpoint. Record it as a personal-project exception;
   revisit before any client or production run.
 - **Consequence:** The DAG is testable without confirming the vendor. Live GovFiles use
-  fails closed when the base URL is absent.
+  fails closed when the API key is absent.
+- **Confirmed contract (2026-11-10):** base `https://api.govfiles.dev`; auth header
+  `X-API-Key`; credits at `GET /v2/credits`; search at `POST /v2/companies/search` with
+  `q` + `jurisdictions`; detail at `GET /v2/companies/{jurisdiction_code}/{entity_number}`
+  returns `entity_url`. Adapter version is `govfiles_v3`; registry-vendor noise
+  (`Sunbiz`, `registered agent`) is stripped before search. ToS/coverage review for
+  client work remains open.
 
 ## ADR-029 — Dev fixtures are captured at the wrapper and never active in prod
 
@@ -321,6 +327,39 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
   empty plan.
 - **Consequence:** Changing the model or prompt invalidates planner cache entries and
   planner fixtures; re-capture with `ACQUISCOUT_CAPTURE_PLANNER=1`.
+
+## ADR-036 — LangSmith tracing is opt-in and bridged from Settings
+
+- **Status:** accepted
+- **Context:** LangGraph emits rich traces, but the team also wants a hosted view. ADR-017
+  had deferred Langfuse and kept Jaeger as the local trace target.
+- **Decision:** Add opt-in LangSmith tracing. `Settings` reads `LANGSMITH_TRACING`,
+  `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `LANGSMITH_ENDPOINT`,
+  and `ACQUISCOUT_AGENT_ID` / `ACQUISCOUT_AGENT_ENVIRONMENT` (with legacy `LANGCHAIN_*`
+  aliases for the first four). The agent metadata uses `ACQUISCOUT_*` names to avoid
+  colliding with LangSmith's own agent-routing variables. `configure_langsmith` copies them to the process
+  environment before the graph runs and explicitly disables tracing when the flag is
+  false. The run name is `discovery-<run_id>` and traces carry `agent_id` /
+  `agent_environment` metadata. A missing key with tracing enabled fails at `Settings`
+  construction. The key is never logged or committed.
+- **Consequence:** Jaeger remains an alternative local backend. Turning tracing on is a
+  deliberate `.env` change; rotating the key requires only updating `.env`.
+
+## ADR-037 — LangGraph Studio uses a dedicated entry point
+
+- **Status:** accepted
+- **Context:** `build_discovery_graph` needs `DiscoveryDeps`, but `langgraph dev` expects a
+  graph object or a single-configuration factory. Pointing the CLI directly at the graph
+  module would either fail or require constructing clients at import time.
+- **Decision:** `pipeline/studio.py:graph` builds production deps from `Settings` and
+  returns an uncompiled-checkpointer graph. `langgraph.json` maps the `discovery` graph
+  to that function with `dependencies: ["."]` and `env: ".env"`. `pipeline/__main__.py`
+  remains the real run path with SQLite checkpoints and run logging.
+- **Consequence:** `langgraph dev` shows the graph shape and permits local runs without
+  changing the CLI's persistence behavior. Importing the Studio module does not make
+  network calls; provider clients are lazy. The Studio factory deliberately omits the
+  SQLite cache because creating it inside the async factory triggers LangGraph's
+  blockbuster guard (`BlockingError: os.mkdir`). The CLI keeps the cache.
 
 ---
 

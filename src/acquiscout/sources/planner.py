@@ -56,7 +56,10 @@ def build_prompt(icp: dict[str, Any], hints: dict[str, Any], plan_size: int) -> 
         "Use tavily_web for company/website discovery and govfiles_registry for "
         "public registry discovery. Alternate them: two tavily_web tasks and two "
         "govfiles_registry tasks when generating four. Queries must be short, "
-        "specific, and include the geography.\n\n"
+        "specific, and include the geography. For govfiles_registry, queries are "
+        "matched against company names, so use sector + geography only (for example, "
+        "'Hillsborough title company'); do not include Sunbiz, registered agent, or "
+        "registry vendor names.\n\n"
         f"ICP:\n{json.dumps(icp, indent=2, sort_keys=True)}\n\n"
         f"Search vocabulary hints:\n{json.dumps(hints, indent=2, sort_keys=True)}\n"
     )
@@ -135,7 +138,7 @@ def fallback_plan(icp: dict[str, Any], hints: dict[str, Any], plan_size: int) ->
             query = f"{sector} {county} Florida"
         else:
             node = "govfiles_registry"
-            query = f"{sector} {county} Florida registered agent"
+            query = f"{county} {sector}"
         tasks.append(
             SearchTask(
                 task_id=f"{node}-{index}",

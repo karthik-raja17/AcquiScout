@@ -35,6 +35,7 @@ def _raw_result(candidate: Any) -> dict[str, Any]:
     return {
         "entity_id": candidate.identifier,
         "legal_name": candidate.title,
+        "jurisdiction": candidate.registry_jurisdiction,
         "url": str(candidate.crawl_url) if candidate.crawl_url is not None else None,
     }
 

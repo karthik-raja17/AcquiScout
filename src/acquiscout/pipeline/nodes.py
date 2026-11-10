@@ -95,7 +95,12 @@ def rank_key(candidate: Candidate) -> tuple[Any, ...]:
 def _dedup_key(candidate: Candidate) -> tuple[str, ...]:
     if candidate.identifier_kind == "url":
         return ("url", canonicalize_url(candidate.identifier))
-    return ("registry_id", candidate.provider, candidate.identifier)
+    return (
+        "registry_id",
+        candidate.provider,
+        candidate.registry_jurisdiction or "",
+        candidate.identifier,
+    )
 
 
 def _merge(existing: Candidate, incoming: Candidate) -> Candidate:
@@ -183,6 +188,7 @@ def _to_candidate(
     return Candidate(
         identifier=str(entity_id),
         identifier_kind="registry_id",
+        registry_jurisdiction=(str(result["jurisdiction"]) if result.get("jurisdiction") else None),
         source_type="registry",
         provider=provider,
         title=result.get("legal_name"),

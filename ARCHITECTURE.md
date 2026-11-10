@@ -55,6 +55,8 @@ planner → Send(tavily_web | govfiles_registry) → collect → route
   `docs/discovery-runs.md`.
 - `pipeline/export.py` — opt-in JSON export for completed runs to
   `data/generated/discovery/`; aborted runs are not exported.
+- `pipeline/studio.py` + `langgraph.json` — `langgraph dev` entry point for the graph
+  shape in LangGraph Studio. The CLI path remains `pipeline/__main__.py`.
 
 ## 2. Module boundaries
 
@@ -89,8 +91,8 @@ Rules:
 - `Prospect` — identity, county, sector, estimates, ownership, contacts, score, risk flags, dedup cluster, review state, CRM state, timestamps.
 - `ReviewState` — pending / verified / rejected (+ reason). Only a human may move to verified.
 - `Candidate` / `QueryHit` / `SearchTask` — discovery provenance: identifier kind
-  (`url` or `registry_id`), provider, per-query hits, optional resolved `crawl_url`,
-  and the validated planner task.
+  (`url` or `registry_id`), registry jurisdiction, provider, per-query hits, optional
+  resolved `crawl_url`, and the validated planner task.
 
 ## 4. Cross-cutting concerns
 
@@ -101,7 +103,10 @@ Rules:
 - **Caching:** Redis cache-aside for scrapes keyed by `url + extractor_version`; SQLite
   search cache for discovery keyed by provider + query + params + version. Dev
   fixtures replay before either cache and before any network call.
-- **Observability:** per-prospect tokens, latency, cost; per-run funnel counts; weekly cost per qualified prospect.
+- **Observability:** LangSmith tracing is opt-in for LangGraph runs
+  (`LANGSMITH_TRACING`, bridged from `Settings` at run start); per-prospect tokens,
+  latency, cost; per-run funnel counts; weekly cost per qualified prospect. Jaeger
+  remains the target local trace backend (ADR-017); LangSmith is the hosted option.
 - **Security:** bearer `ACQUISCOUT_API_KEY` on FastAPI; `llm-guard` on prompts/outputs; `sources/policy.py` denies paywalled/private domains before any request.
 - **HITL:** review transitions and rejection reasons are persisted and reusable as eval signal.
 
@@ -116,6 +121,7 @@ Rules:
 
 - Crawl onward: extraction, enrichment, estimation, scoring, verification, review, export.
 - `eval/` harness and `tests/eval` — see `EVALUATION.md`.
-- Registry URL resolution is best-effort; the Sunbiz/GovFiles live contracts are unverified.
+- Registry URL resolution is best-effort. The GovFiles v2 contract is confirmed;
+  `entity_url` currently points at Sunbiz search-results pages, not detail pages.
 - Arkansas market pack — config-gated, deferred.
 - CRM integration — export only in v1 (ADR-007); native HubSpot is Week 10+.

@@ -16,6 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
 from acquiscout.config import Settings
+from acquiscout.observability import configure_langsmith, tracing_metadata
 from acquiscout.pipeline.nodes import DiscoveryDeps, make_nodes
 from acquiscout.pipeline.state import DiscoveryState, initial_state
 
@@ -103,9 +104,14 @@ async def run_discovery(
     checkpointer: BaseCheckpointSaver[Any] | None = None,
     run_id: str | None = None,
 ) -> DiscoveryState:
+    configure_langsmith(deps.settings)
     graph = build_discovery_graph(deps, checkpointer)
     state = initial_state(deps.settings, run_id)
-    config = {"configurable": {"thread_id": state["run_id"]}}
+    config = {
+        "configurable": {"thread_id": state["run_id"]},
+        "run_name": f"discovery-{state['run_id']}",
+        "metadata": tracing_metadata(deps.settings),
+    }
     return cast(DiscoveryState, await graph.ainvoke(state, config))
 
 
