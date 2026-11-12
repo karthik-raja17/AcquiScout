@@ -18,7 +18,23 @@ Source-backed, human-reviewed M&A research pipeline. Turns fragmented public dat
 
 - Phase 0 contract: config, schemas, policy, golden set, docs, tests.
 - Discovery slice: LangGraph planner → Tavily/GovFiles search → collect → bouncer →
-  resolve, with SQLite checkpoints/cache, DLQ, and dev fixture replay.
+  resolve → relevance → GovFiles registry enrichment → public Sunbiz/DBPR evidence →
+  company dedup → screening, with lossless archives, SQLite checkpoints/cache, DLQ,
+  usage budgets, and dev fixture replay.
+- Directory resolution is **off by default**. The experimental graph (directory resolver
+  → high-confidence website search) remains behind `ENABLE_DIRECTORY_RESOLVER=true`.
+  See `docs/resolver-experiment.md` and ADR-043.
+- Discovery eval baseline: 40 samples; 100% official-company Jina fetch, 56.2%
+  crawl-worthy precision.
+- Registry evidence: GovFiles detail is enrichment only; public Sunbiz/DBPR detail pages
+  are the evidence URLs. Dropped companies are archived with reasons.
+- Source blocks are recorded explicitly (`blocked`, `rate_limited`, `http_error`,
+  etc.) with source/reason/backend. A per-host circuit breaker stops repeated calls
+  to a blocked host. See `docs/source-failures.md` and ADR-044.
+- Fixed-denominator resolver eval on the frozen 40-sample baseline: official mapping
+  18/32 (56.2%) → 21/32 (65.6%), but 2 of 3 conversions were duplicates and only **one
+  net-new company** was added; 8/32 unresolved. The simpler graph is the default. See
+  `docs/eval-runs.md` and `docs/resolver-experiment.md`.
 - Crawl, extraction, scoring, verification, API, and dashboard are not built yet.
 - `golden_v1.json` is frozen; `golden_v2.xlsx` is a draft schema extension.
 
@@ -41,6 +57,9 @@ ruff format --check .
 python -m acquiscout.smoke
 python -m acquiscout.pipeline       # live discovery run (needs Tavily/Groq keys)
 python -m acquiscout.pipeline --export   # also write data/generated/discovery/<run_id>.json
+python scripts/eval_discovery.py    # crawl-worthiness eval (plain HTTP fetches)
+python scripts/eval_resolver.py     # resolver/baseline phase-2/3 eval (live calls)
+python scripts/measure_latency.py   # per-node discovery latency (live calls)
 
 docker compose up -d postgres redis
 ```
@@ -61,6 +80,40 @@ python -m acquiscout.pipeline       # no external calls
 `dev_fixtures/` is per-developer and gitignored. If capture was missed, the optional
 `python -m acquiscout.dev.freeze_from_checkpoint <thread_id>` rescues a lossy copy from
 a pre-bouncer checkpoint. Fixture flags are refused when `ACQUISCOUT_ENV=prod`.
+
+## Discovery eval and raw archive
+
+Each search node writes its results before returning:
+
+```text
+data/generated/discovery/<run_id>/
+  plan.json
+  manifest.json
+  usage.json
+  raw/tavily_web/<task_id>.json
+  raw/govfiles_registry/<task_id>.json
+  directory/<hash>.json
+  registry/<hash>.json
+  registry_evidence/<hash>.json
+  company_url/<hash>.json
+  dropped.json
+```
+
+The archive includes the request, normalized results, raw provider payload, usage, and
+error (if any), so an abort or crash cannot lose search data. `usage.json` records Tavily
+credits, GovFiles credits, and Groq tokens; budgets are enforced before search calls.
+The graph also emits `resolved_entities` and `company_candidates`, records every
+relevance drop with a reason, and archives dropped companies in `dropped.json`.
+
+Discovery is scored on crawl-worthiness, not golden-set recall:
+
+```powershell
+python scripts/eval_discovery.py
+```
+
+Only `official_company` samples are fetched, through Jina Reader; the limiter defaults to
+18 RPM because the free tier allows 20. See `EVALUATION.md` §2 and
+`data/raw/discovery_eval_v1.json`.
 
 ## Observability (LangSmith)
 

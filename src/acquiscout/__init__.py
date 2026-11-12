@@ -3,6 +3,7 @@
 from acquiscout.config import Settings, get_settings
 from acquiscout.schemas import (
     Candidate,
+    CompanyCandidate,
     Confidence,
     Contact,
     ContactKind,
@@ -14,12 +15,16 @@ from acquiscout.schemas import (
     Principal,
     Prospect,
     QueryHit,
+    RegistryOfficer,
+    RegistryProfile,
+    ResolvedEntity,
     ReviewState,
     ScoreBreakdown,
     ScoreWeights,
     SearchTask,
     Sector,
     SourceRef,
+    UsageRecord,
     VerificationStatus,
 )
 
@@ -27,6 +32,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Candidate",
+    "CompanyCandidate",
     "Confidence",
     "Contact",
     "ContactKind",
@@ -38,6 +44,9 @@ __all__ = [
     "Principal",
     "Prospect",
     "QueryHit",
+    "RegistryOfficer",
+    "RegistryProfile",
+    "ResolvedEntity",
     "ReviewState",
     "ScoreBreakdown",
     "ScoreWeights",
@@ -45,6 +54,7 @@ __all__ = [
     "Sector",
     "Settings",
     "SourceRef",
+    "UsageRecord",
     "VerificationStatus",
     "get_settings",
 ]

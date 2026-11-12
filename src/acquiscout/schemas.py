@@ -11,7 +11,7 @@ contact is corroborated or human-audited.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Literal, Self
 from urllib.parse import urlsplit
@@ -304,12 +304,13 @@ class Candidate(BaseModel):
     title: str | None = None
     snippet: str | None = None
     crawl_url: str | None = None
+    public_entity_url: str | None = None
     resolution_status: Literal["none", "resolved", "failed"] = "none"
     review_flags: list[str] = Field(default_factory=list)
     found_by: list[QueryHit] = Field(default_factory=list)
     first_seen_at: datetime = Field(default_factory=_now)
 
-    @field_validator("crawl_url")
+    @field_validator("crawl_url", "public_entity_url")
     @classmethod
     def _validate_crawl_url(cls, value: str | None) -> str | None:
         if value is None:
@@ -333,3 +334,109 @@ class SearchTask(BaseModel):
     query: str = Field(min_length=1)
     params: dict[str, object] = Field(default_factory=dict)
     search_plan_index: int = Field(ge=0)
+
+
+class RegistryOfficer(BaseModel):
+    name: str = Field(min_length=1)
+    title: str | None = None
+    role: str | None = None
+    address: str | None = None
+
+
+class RegistryProfile(BaseModel):
+    """Structured registry enrichment plus public evidence status."""
+
+    status: str | None = None
+    status_raw: str | None = None
+    legal_form: str | None = None
+    legal_form_raw: str | None = None
+    formed_on: date | None = None
+    officers: list[RegistryOfficer] = Field(default_factory=list)
+    registered_address: str | None = None
+    mailing_address: str | None = None
+    names: list[str] = Field(default_factory=list)
+    filings: list[dict[str, object]] = Field(default_factory=list)
+    identifiers: list[str] = Field(default_factory=list)
+    county: County | None = None
+    sector: Sector | None = None
+    public_entity_url: str | None = None
+    public_detail_url: str | None = None
+    govfiles_detail_url: str | None = None
+    evidence_status: Literal[
+        "public_detail",
+        "search_page_only",
+        "blocked",
+        "rate_limited",
+        "http_error",
+        "network_error",
+        "low_quality",
+        "unsupported_source",
+        "parse_failed",
+        "failed",
+        "none",
+    ] = "none"
+    evidence_reason: str | None = None
+    evidence_source: str | None = None
+    evidence_http_status: int | None = None
+    evidence_backend: str | None = None
+    evidence_checked_at: datetime | None = None
+    source_method: str = "govfiles_detail"
+    fetched_at: datetime = Field(default_factory=_now)
+
+
+class ResolvedEntity(BaseModel):
+    """A company identity resolved from a web, directory, or registry candidate."""
+
+    company_name: str = Field(min_length=1)
+    official_url: str | None = None
+    root_domain: str | None = None
+    method: Literal["web", "registry", "json_ld", "metadata", "title", "llm", "search"] = "web"
+    confidence: Confidence = Confidence.LOW
+    registry_ids: list[str] = Field(default_factory=list)
+    registry_profile: RegistryProfile | None = None
+    sources: list[Candidate] = Field(default_factory=list)
+    review_flags: list[str] = Field(default_factory=list)
+
+    @field_validator("official_url")
+    @classmethod
+    def _validate_official_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return str(TypeAdapter(HttpUrl).validate_python(value))
+
+
+class CompanyCandidate(BaseModel):
+    """A company-level deduplicated result."""
+
+    company_key: str = Field(min_length=1)
+    company_name: str = Field(min_length=1)
+    root_domain: str | None = None
+    official_url: str | None = None
+    official_url_method: str | None = None
+    registry_ids: list[str] = Field(default_factory=list)
+    registry_profile: RegistryProfile | None = None
+    sources: list[Candidate] = Field(default_factory=list)
+    confidence: Confidence = Confidence.LOW
+    review_flags: list[str] = Field(default_factory=list)
+
+    @field_validator("official_url")
+    @classmethod
+    def _validate_official_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return str(TypeAdapter(HttpUrl).validate_python(value))
+
+
+class UsageRecord(BaseModel):
+    """One metered provider call."""
+
+    run_id: str
+    provider: str = Field(min_length=1)
+    operation: str = Field(min_length=1)
+    calls: int = Field(default=1, ge=0)
+    credits: int = Field(default=0, ge=0)
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+    detail: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_now)

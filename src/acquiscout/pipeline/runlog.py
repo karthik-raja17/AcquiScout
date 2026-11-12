@@ -15,9 +15,10 @@ HEADER = (
     "# Discovery Runs Log\n\n"
     "Auto-written by `python -m acquiscout.pipeline`; one row per run. "
     "The CLI upserts by `run_id`; do not fabricate entries.\n\n"
-    "| run_id | finished_at | status | plan | failures | candidates | "
-    "provider_errors | abort_reason | checkpoint |\n"
-    "|---|---|---|---:|---:|---:|---:|---|---|\n"
+    "| run_id | finished_at | status | plan | failures | candidates | companies | "
+    "provider_errors | tavily_credits | govfiles_credits | groq_tokens | "
+    "abort_reason | checkpoint |\n"
+    "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n"
 )
 
 
@@ -32,7 +33,29 @@ def _display_path(path: Path) -> str:
         return path.as_posix()
 
 
+def _record_value(record: object, key: str) -> int:
+    if isinstance(record, dict):
+        return int(record.get(key, 0) or 0)
+    return int(getattr(record, key, 0) or 0)
+
+
+def _usage_totals(final: Mapping[str, Any]) -> tuple[int, int, int]:
+    tavily = govfiles = groq = 0
+    for record in final.get("usage") or []:
+        provider = (
+            record.get("provider") if isinstance(record, dict) else getattr(record, "provider", "")
+        )
+        if provider == "tavily_web":
+            tavily += _record_value(record, "credits")
+        elif provider == "govfiles_registry":
+            govfiles += _record_value(record, "credits")
+        elif provider == "groq":
+            groq += _record_value(record, "total_tokens")
+    return tavily, govfiles, groq
+
+
 def _row(final: Mapping[str, Any], settings: Settings) -> str:
+    tavily, govfiles, groq = _usage_totals(final)
     return (
         "| "
         + " | ".join(
@@ -43,7 +66,11 @@ def _row(final: Mapping[str, Any], settings: Settings) -> str:
                 _cell(len(final.get("search_plan") or [])),
                 _cell(final.get("search_failure_count", 0)),
                 _cell(len(final.get("deduplicated_candidates") or [])),
+                _cell(len(final.get("company_candidates") or [])),
                 _cell(len(final.get("provider_errors") or [])),
+                _cell(tavily),
+                _cell(govfiles),
+                _cell(groq),
                 _cell(final.get("abort_reason") or ""),
                 _cell(_display_path(settings.checkpoint_db_path)),
             ]

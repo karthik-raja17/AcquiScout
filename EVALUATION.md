@@ -57,9 +57,51 @@ If a metric is not defined here, it cannot be claimed in a README, demo, or pitc
 
 "Verified" means source-backed and/or human-audited — never audited financial truth. **EBITDA is always rendered as a proxy with a band.**
 
-**Discovery stage:** there is no scored discovery metric yet. Do not claim search
-recall, precision, or candidate quality from a live run; `docs/discovery-runs.md`
-records operational outcomes only.
+### Discovery crawl-worthiness
+
+Discovery is judged on whether it hands the crawl stage fetchable, company-like URLs.
+**Golden-set recall is not a discovery metric**; golden labels are used later for
+extraction and qualification.
+
+| Metric | Definition | Gate |
+|---|---|---:|
+| Fetch success | Official-company sample URLs fetched through the crawl stack (Jina Reader, rate-limited to 18 RPM) with ≥400 chars of text | ≥ 90% |
+| Crawl-worthy precision | Manual `official_company` labels ÷ web samples | ≥ 80% |
+| Non-target share | Directory + government + news + other ÷ web samples | Informational |
+| Root-domain diversity | Unique registrable domains ÷ web samples | Informational |
+
+- Sample: `data/raw/discovery_eval_v1.json` (manual labels; registry rows tracked
+  separately).
+- Only `official_company` samples are fetched, through `Scraper`/Jina; directory,
+  government, news, and registry rows are labeled without fetching.
+- Runner: `python scripts/eval_discovery.py` writes a timestamped JSON under
+  `data/generated/discovery_eval/`.
+- Registry candidates are excluded from the web URL precision denominator and reported
+  separately; a Sunbiz search-results URL is not a crawl-worthy company page.
+- Crawl outcomes (`fetched`, `text_chars`, `extraction_status`) feed back into the
+  next discovery eval; they do not retroactively change manual labels.
+- Fixed-denominator resolver diagnostic: map every web input to `official` /
+  `non_target` / `unresolved` over the fixed denominator (32) and report final unique
+  companies separately. An `official` mapping is not a new company; count net-new
+  companies and duplicate conversions. Directory resolution is off by default; the
+  experiment and decision are in `docs/resolver-experiment.md` (ADR-043).
+
+**Registry evidence metrics:**
+
+| Metric | Definition |
+|---|---|
+| GovFiles enrichment coverage | registry records with detail fields ÷ registry records |
+| Public evidence coverage | registry records with a public Sunbiz/DBPR detail URL ÷ registry records |
+| Officer evidence coverage | records with ≥2 named officers on the public page ÷ records |
+| Ownership full-credit rate | records eligible for ownership 15 ÷ records |
+| Evidence partial rate | search-page-only or failed ÷ registry records |
+| Blocked evidence rate | blocked or rate-limited records / registry records |
+| Drop-missing-evidence rate | records dropped for missing required public evidence ÷ registry records |
+| Company URL resolution rate | high-confidence companies that get an official URL ÷ eligible high-confidence companies |
+| Company URL search precision | correct official websites ÷ search-resolved URLs (manual/LLM review) |
+| Company URL search cost | Tavily credits per search-resolved URL |
+
+GovFiles detail counts for enrichment only; it never satisfies G3 or ownership evidence.
 
 **Cost during development:** dev runs execute on the free stack (Jina Reader, local Ollama, free-tier Groq/Gemini), so a $0 cost line is a degenerate measurement, not evidence of meeting the target. Dev runs report token counts and free-tier budget consumption. The $5 threshold is measured on a single paid-tier reference run recorded in `docs/eval-runs.md` before the demo (ADR-017).
 
@@ -100,7 +142,7 @@ Gates use the conservative low end of each band:
 
 - **G1:** `revenue_low_usd` ≥ 1,500,000
 - **G2:** `ebitda_low_usd` ≥ 500,000
-- **G3:** `principal_source_url` is a real URL **and** either (a) `management_evidence_url` shows ≥2 named people with roles, or (b) the registry (`principal_source_url`) lists ≥2 individual officers with titles (ADR-022)
+- **G3:** `principal_source_url` is a real **public Sunbiz/DBPR detail page** **and** either (a) `management_evidence_url` shows ≥2 named people with roles, or (b) that public registry page lists ≥2 individual officers with titles (ADR-022). GovFiles detail is enrichment only and does not satisfy G3.
 - **G4:** headquarters in Hillsborough, Pinellas, or Pasco; `primary_county` records where the mention was observed, not where the company is based
 - **G5:** independent operator, not a brand of a multi-brand roll-up or a subsidiary of a larger operator
 
@@ -119,7 +161,7 @@ Derivation and clarifications:
 - Any additional county earns Market 10, whether or not it is one of the three target counties. Target county plus sector alone is 5.
 - For an out-of-geography entity, `primary_county` is the county where the mention was observed, the HQ county goes in `also_serves_counties`, Market is 0, and the verdict is `rejected` with a reason naming the HQ county (`DECISIONS.md` ADR-024). This overrides the usual Market anchor.
 - A brand of a multi-brand roll-up, or a subsidiary of a larger operator, fails G5 and is `rejected` regardless of score; `rejection_reason` names the parent (`DECISIONS.md` ADR-025).
-- Ownership full credit requires a registry filing as the owner source; a company about page, or a registry search-results URL, scores partial 7.
+- Ownership full credit requires a **public Sunbiz/DBPR detail/filing page** as the owner source; a company about page, a Sunbiz search-results URL, or a GovFiles-only source scores partial at most. GovFiles detail is enrichment/extraction only and never satisfies ownership evidence.
 - Labeler mistakes (typos, arithmetic slips) never move a component; only evidence about the record does.
 - Data confidence scores the sourcing of revenue, EBITDA, contact, and owner. Management evidence is scored in Management, not here.
 

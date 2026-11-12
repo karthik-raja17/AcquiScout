@@ -37,6 +37,14 @@ def export_run(
             candidate.model_dump(mode="json")
             for candidate in final.get("deduplicated_candidates") or []
         ],
+        "resolved_entities": [
+            entity.model_dump(mode="json") for entity in final.get("resolved_entities") or []
+        ],
+        "company_candidates": [
+            company.model_dump(mode="json") for company in final.get("company_candidates") or []
+        ],
+        "relevance_dropped": final.get("relevance_dropped") or [],
+        "dropped_companies": final.get("dropped_companies") or [],
         "checkpoint": str(settings.checkpoint_db_path),
     }
     handle, temp_name = tempfile.mkstemp(dir=target_dir, suffix=".tmp")

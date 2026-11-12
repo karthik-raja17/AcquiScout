@@ -91,16 +91,24 @@ class Settings(BaseSettings):
 
     discovery_cache_ttl_hours: int = 168
     scrape_fallback_to_firecrawl: bool = False
+    scrape_circuit_enabled: bool = True
+    scrape_circuit_failure_threshold: int = 1
+    scrape_circuit_cooldown_seconds: int = 600
     jina_min_chars: int = 400
+    jina_requests_per_minute: int = 18
     max_tavily_credits_per_run: int = 50
+    max_govfiles_credits_per_run: int = 100
     max_firecrawl_credits_per_run: int = 10
     groq_daily_token_budget: int = 100_000
+    groq_run_token_budget: int = 20_000
     gemini_daily_request_budget: int = 1_000
+    crawl_min_text_chars: int = 400
 
     search_plan_size: int = 4
     search_max_results: int = 10
     failure_abort_ratio: float = 0.5
     max_urls_per_domain: int = 3
+    enable_directory_resolver: bool = False
     search_prompt_version: str = "planner_v3"
     search_hints_version: str = "search_hints_v1"
     groq_model: str = "openai/gpt-oss-20b"
@@ -122,6 +130,7 @@ class Settings(BaseSettings):
 
     data_raw_dir: Path = ROOT / "data" / "raw"
     data_generated_dir: Path = ROOT / "data" / "generated"
+    discovery_archive_dir: Path = ROOT / "data" / "generated" / "discovery"
     cache_dir: Path = ROOT / "data" / "cache"
     checkpoint_db_path: Path = ROOT / "data" / "cache" / "checkpoints.db"
     search_cache_db_path: Path = ROOT / "data" / "cache" / "search_cache.db"
@@ -136,6 +145,23 @@ class Settings(BaseSettings):
             raise ValueError("at least one value is required")
         return value
 
+    @field_validator(
+        "tavily_api_key",
+        "serper_api_key",
+        "firecrawl_api_key",
+        "jina_api_key",
+        "groq_api_key",
+        "gemini_api_key",
+        "govfiles_api_key",
+        "langsmith_api_key",
+        mode="before",
+    )
+    @classmethod
+    def _blank_secret_to_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("audit_sample_rate", "failure_abort_ratio")
     @classmethod
     def _rate_in_range(cls, value: float) -> float:
@@ -145,11 +171,17 @@ class Settings(BaseSettings):
 
     @field_validator(
         "discovery_cache_ttl_hours",
+        "scrape_circuit_failure_threshold",
+        "scrape_circuit_cooldown_seconds",
         "jina_min_chars",
+        "jina_requests_per_minute",
         "max_tavily_credits_per_run",
+        "max_govfiles_credits_per_run",
         "max_firecrawl_credits_per_run",
         "groq_daily_token_budget",
+        "groq_run_token_budget",
         "gemini_daily_request_budget",
+        "crawl_min_text_chars",
         "search_plan_size",
         "search_max_results",
         "max_urls_per_domain",

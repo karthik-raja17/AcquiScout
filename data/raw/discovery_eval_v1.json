@@ -1,0 +1,249 @@
+{
+  "version": "1.1",
+  "description": "Discovery crawl-worthiness baseline. Manual labels; registry rows are tracked separately from web crawl candidates. No golden-set recall is scored. Web sample expands across Tampa, St. Petersburg, Clearwater, Brandon, and Pasco queries.",
+  "samples": [
+    {
+      "url": "https://tampatitle.com",
+      "title": "Home - Tampa Title Company, FL",
+      "label": "official_company",
+      "company_name": "Tampa Title Company"
+    },
+    {
+      "url": "https://firsttitlesource.com/title-company-tampa-fl",
+      "title": "Title Company Tampa FL | First Title Source",
+      "label": "official_company",
+      "company_name": "First Title Source"
+    },
+    {
+      "url": "https://urbancoreprops.com",
+      "title": "St Petersburg Property Management | Urban Core",
+      "label": "official_company",
+      "company_name": "Urban Core Property Management"
+    },
+    {
+      "url": "https://copelandmorgan.com/property-management",
+      "title": "Property Management in St Petersburg, FL | Copeland Morgan LLC",
+      "label": "official_company",
+      "company_name": "Copeland Morgan LLC"
+    },
+    {
+      "url": "https://mail.rentinstpete.com/home",
+      "title": "HOME",
+      "label": "official_company",
+      "company_name": "Rent in St Pete"
+    },
+    {
+      "url": "https://firsttitlesource.com/title-company-clearwater-fl",
+      "title": "Title Company Clearwater, Florida | First Title Source, LLC",
+      "label": "official_company",
+      "company_name": "First Title Source"
+    },
+    {
+      "url": "https://cleartitleaz.com",
+      "title": "Home - Clear Title Agency of Arizona",
+      "label": "official_company",
+      "company_name": "Clear Title Agency of Arizona"
+    },
+    {
+      "url": "https://frtitle.org",
+      "title": "Title Company - Treasure Island, Clearwater, St. Petersburg FL | First Republic Title LLC",
+      "label": "official_company",
+      "company_name": "First Republic Title LLC"
+    },
+    {
+      "url": "https://www.rentsolutions.com/brandon-property-management",
+      "title": "Brandon Property Management Company | Rent Solutions",
+      "label": "official_company",
+      "company_name": "Rent Solutions"
+    },
+    {
+      "url": "https://tampapropertymanagement.net/service-areas/brandon-florida-property-management",
+      "title": "Brandon Florida Property Management & Rental Property Managers",
+      "label": "official_company",
+      "company_name": "Tampa Property Management"
+    },
+    {
+      "url": "https://www.dennisrealtyrentals.com/brandon-property-management",
+      "title": "Property Management Brandon, FL - #1 Rental Company",
+      "label": "official_company",
+      "company_name": "Dennis Property Management"
+    },
+    {
+      "url": "https://www.eatonrealty.com/tampa-property-management/brandon",
+      "title": "Brandon Property Management Company | Maximize ROI",
+      "label": "official_company",
+      "company_name": "Eaton Realty"
+    },
+    {
+      "url": "https://meridiantitlecompany.com",
+      "title": "Home - Meridian Title Company, Inc. | Dade City, Florida Title Company",
+      "label": "official_company",
+      "company_name": "Meridian Title Company"
+    },
+    {
+      "url": "https://westward360.com/locations/tampa-bay-fl",
+      "title": "HOA Management Company | Tampa Bay Florida | Westward360",
+      "label": "official_company",
+      "company_name": "Westward360"
+    },
+    {
+      "url": "https://vestapropertyservices.com/tampa",
+      "title": "Tampa Property Management, HOA Management, Condo Association",
+      "label": "official_company",
+      "company_name": "Vesta Property Services"
+    },
+    {
+      "url": "https://www.oceanbluecommunities.com",
+      "title": "Tampa Property Management | Ocean Blue Community Management",
+      "label": "official_company",
+      "company_name": "Ocean Blue Community Management"
+    },
+    {
+      "url": "https://www.sentrymgt.com/offices/tampa-bay-clearwater",
+      "title": "Homeowner & Condo Association Management in Clearwater - Tampa",
+      "label": "official_company",
+      "company_name": "Sentry Management"
+    },
+    {
+      "url": "https://hillsboroughtitle.com/",
+      "title": "Hillsborough Title",
+      "label": "official_company",
+      "company_name": "Hillsborough Title"
+    },
+    {
+      "url": "https://www.mapquest.com/us/florida/tampa-title-company-277684580",
+      "title": "Tampa Title Co | MapQuest",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.mapquest.com/us/florida/brokers-title-of-tampa-540678065",
+      "title": "Brokers Title of Tampa LLC | MapQuest",
+      "label": "directory"
+    },
+    {
+      "url": "https://leadiq.com/c/old-tampa-bay-title-llc/60156ff5411f372b40652121",
+      "title": "Old Tampa Bay Title, LLC Company Overview | LeadIQ",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.expertise.com/business/property-management/florida/st-petersburg",
+      "title": "18 Best St. Petersburg, FL Property Management Companies | Expertise.com",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.expertise.com/fl/st-petersburg/property-management",
+      "title": "18 Best St. Petersburg, FL Property Management Companies | Expertise.com",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.indeed.com/q-agency-manager-l-clearwater,-fl-jobs.html",
+      "title": "Agency Manager Jobs in Clearwater, FL | Indeed",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.indeed.com/q-title-insurance-agency-accountant-jobs.html",
+      "title": "Title Insurance Agency Accountant Jobs | Indeed",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.mapquest.com/us/florida/hillsborough-rental-property-management-378904703",
+      "title": "Hillsborough Rental & Property Management | MapQuest",
+      "label": "directory"
+    },
+    {
+      "url": "https://leadiq.com/c/pasco-county-government/5a1d8935240000240062b28b",
+      "title": "Pasco County Government Company Overview | LeadIQ",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.mapquest.com/us/florida/pasco-county-of-426825630",
+      "title": "Pasco County of | MapQuest",
+      "label": "directory"
+    },
+    {
+      "url": "https://rocketreach.co/pasco-county-schools-profile_b5c03efcf42e0826",
+      "title": "Pasco County Schools Information | RocketReach",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.hoamanagement.com/city/tampa",
+      "title": "Tampa, FL HOA Management Companies | Management Directory",
+      "label": "directory"
+    },
+    {
+      "url": "https://www.pascotaxes.com/fishing/hunting-license-info/motor-vehicle-information/titleinfo",
+      "title": "Vehicle Title Information | Mike Fasano",
+      "label": "government"
+    },
+    {
+      "url": "https://pinellas.gov/department/construction-and-property-management",
+      "title": "Construction & Property Management - Pinellas County",
+      "label": "government"
+    },
+    {
+      "url": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/HILLSBOROUGH%20ABSTRACT%20AND%20TITLE%20COMPANY/Page1",
+      "title": "HILLSBOROUGH ABSTRACT AND TITLE COMPANY",
+      "label": "registry",
+      "company_name": "HILLSBOROUGH ABSTRACT AND TITLE COMPANY",
+      "notes": "GovFiles entity_url is a Sunbiz search-results page, not a detail page.",
+      "registry_jurisdiction": "us_fl",
+      "registry_number": "155774"
+    },
+    {
+      "url": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/HILLSBOROUGH%20COUNTY%20TITLE%20COMPANY/Page1",
+      "title": "HILLSBOROUGH COUNTY TITLE COMPANY",
+      "label": "registry",
+      "company_name": "HILLSBOROUGH COUNTY TITLE COMPANY",
+      "registry_jurisdiction": "us_fl",
+      "registry_number": "219989"
+    },
+    {
+      "url": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/ABSTRACT%20%26%20TITLE%20COMPANY%20OF%20HILLSBOROUGH%20%20%20COUNTY%2C%20INC./Page1",
+      "title": "ABSTRACT & TITLE COMPANY OF HILLSBOROUGH COUNTY, INC.",
+      "label": "registry",
+      "company_name": "ABSTRACT & TITLE COMPANY OF HILLSBOROUGH COUNTY, INC.",
+      "registry_jurisdiction": "us_fl",
+      "registry_number": "466173"
+    },
+    {
+      "url": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/PINELLAS%20PROPERTY%20MANAGEMENT%2C%20INC./Page1",
+      "title": "PINELLAS PROPERTY MANAGEMENT, INC.",
+      "label": "registry",
+      "company_name": "PINELLAS PROPERTY MANAGEMENT, INC.",
+      "registry_jurisdiction": "us_fl",
+      "registry_number": "691001"
+    },
+    {
+      "url": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/PINELLAS%20PROPERTY%20MANAGEMENT%2C%20LLC/Page1",
+      "title": "PINELLAS PROPERTY MANAGEMENT, LLC",
+      "label": "registry",
+      "company_name": "PINELLAS PROPERTY MANAGEMENT, LLC",
+      "registry_jurisdiction": "us_fl",
+      "registry_number": "L04000013963"
+    },
+    {
+      "url": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/PINELLAS%20COASTAL%20PROPERTY%20MANAGEMENT%2C%20L.L.C./Page1",
+      "title": "PINELLAS COASTAL PROPERTY MANAGEMENT, L.L.C.",
+      "label": "registry",
+      "company_name": "PINELLAS COASTAL PROPERTY MANAGEMENT, L.L.C.",
+      "registry_jurisdiction": "us_fl",
+      "registry_number": "L10000002420"
+    },
+    {
+      "url": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/PINELLAS%20OAKLAND%20PROPERTY%20MANAGEMENT%2C%20L.L.C./Page1",
+      "title": "PINELLAS OAKLAND PROPERTY MANAGEMENT, L.L.C.",
+      "label": "registry",
+      "company_name": "PINELLAS OAKLAND PROPERTY MANAGEMENT, L.L.C.",
+      "registry_jurisdiction": "us_fl",
+      "registry_number": "M01000000636"
+    },
+    {
+      "url": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/PINELLAS%20PROPERTY%20MANAGEMENT%20COMPANY%2C%20INC./Page1",
+      "title": "PINELLAS PROPERTY MANAGEMENT COMPANY, INC.",
+      "label": "registry",
+      "company_name": "PINELLAS PROPERTY MANAGEMENT COMPANY, INC.",
+      "registry_jurisdiction": "us_fl",
+      "registry_number": "N16000002412"
+    }
+  ]
+}

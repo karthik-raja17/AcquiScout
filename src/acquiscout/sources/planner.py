@@ -162,6 +162,8 @@ class GroqPlanner:
         self._cache = cache
         self._http = http
         self._owns_http = http is None
+        self.last_raw: dict[str, Any] | None = None
+        self.last_usage: dict[str, Any] | None = None
 
     def _version(self) -> str:
         return (
@@ -174,21 +176,44 @@ class GroqPlanner:
         prompt = build_prompt(icp, hints, self._settings.search_plan_size)
         version = self._version()
         key = fixture_key("groq", prompt, {}, version)
+        self.last_raw = None
+        self.last_usage = None
 
         if self._settings.use_fixtures:
             payload = load_fixture(self._settings.dev_fixtures_dir, "planner", "groq", key)
+            self.last_raw = {
+                "source": "fixture",
+                "prompt": prompt,
+                "model": self._settings.groq_model,
+                "payload": payload,
+            }
             return _extract_tasks(payload, self._settings.search_plan_size)
 
         if self._cache is not None:
             cached = self._cache.get("groq", prompt, {}, version)
             if cached is not None:
+                self.last_raw = {
+                    "source": "cache",
+                    "prompt": prompt,
+                    "model": self._settings.groq_model,
+                    "payload": cached,
+                }
                 return _extract_tasks(cached, self._settings.search_plan_size)
 
-        content = await self._live(prompt)
+        content, usage = await self._live(prompt)
         tasks = _parse_content(content, self._settings.search_plan_size)
+        self.last_raw = {
+            "source": "live",
+            "prompt": prompt,
+            "model": self._settings.groq_model,
+            "response": content,
+            "usage": usage,
+        }
+        self.last_usage = usage
         payload = {
             "tasks": [task.model_dump(mode="json") for task in tasks],
             "raw": content,
+            "usage": usage,
         }
         if self._cache is not None:
             self._cache.set("groq", prompt, {}, version, payload)
@@ -196,7 +221,7 @@ class GroqPlanner:
             save_fixture(self._settings.dev_fixtures_dir, "planner", "groq", key, payload)
         return tasks
 
-    async def _live(self, prompt: str) -> str:
+    async def _live(self, prompt: str) -> tuple[str, dict[str, Any] | None]:
         if self._settings.groq_api_key is None:
             raise ProviderError("GROQ_API_KEY is not configured")
         client = self._client()
@@ -225,7 +250,9 @@ class GroqPlanner:
                     raise ProviderError(f"groq upstream {response.status_code}")
                 response.raise_for_status()
                 payload = response.json()
-                return str(payload["choices"][0]["message"]["content"])
+                content = str(payload["choices"][0]["message"]["content"])
+                usage = payload.get("usage")
+                return content, usage if isinstance(usage, dict) else None
         raise ProviderError("groq retries exhausted")
 
     def _client(self) -> httpx.AsyncClient:

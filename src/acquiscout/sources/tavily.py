@@ -44,19 +44,25 @@ class TavilySearchProvider:
         }
 
     async def search(self, task: SearchTask) -> list[dict[str, Any]]:
+        results, _ = await self.search_raw(task)
+        return results
+
+    async def search_raw(
+        self, task: SearchTask
+    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
         params = self._params(task)
         key = fixture_key(self.name, task.query, params, TAVILY_VERSION)
 
         if self._settings.use_fixtures:
             payload = load_fixture(self._settings.dev_fixtures_dir, "search", self.name, key)
-            return cast(list[dict[str, Any]], payload.get("results", []))
+            return cast(list[dict[str, Any]], payload.get("results", [])), payload
 
         if self._cache is not None:
             cached = self._cache.get(self.name, task.query, params, TAVILY_VERSION)
             if isinstance(cached, dict):
-                return cast(list[dict[str, Any]], cached.get("results", []))
+                return cast(list[dict[str, Any]], cached.get("results", [])), cached
 
-        results = await self._live(task, params)
+        results, raw = await self._live(task, params)
         if self._cache is not None:
             self._cache.set(self.name, task.query, params, TAVILY_VERSION, {"results": results})
         if self._settings.capture_search:
@@ -67,9 +73,11 @@ class TavilySearchProvider:
                 key,
                 {"results": results},
             )
-        return results
+        return results, raw
 
-    async def _live(self, task: SearchTask, params: dict[str, object]) -> list[dict[str, Any]]:
+    async def _live(
+        self, task: SearchTask, params: dict[str, object]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         if self._settings.tavily_api_key is None:
             raise ProviderError("TAVILY_API_KEY is not configured")
         body = {
@@ -80,7 +88,7 @@ class TavilySearchProvider:
         }
         payload = await self._post(body)
         raw_results = payload.get("results", [])
-        return [
+        results = [
             {
                 "url": item.get("url"),
                 "title": item.get("title"),
@@ -90,6 +98,7 @@ class TavilySearchProvider:
             for item in raw_results
             if item.get("url")
         ]
+        return results, payload
 
     async def _post(self, body: dict[str, object]) -> dict[str, Any]:
         client = self._client()

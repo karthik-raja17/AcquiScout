@@ -26,8 +26,20 @@ agents = [
 ]
 api = ["fastapi>=0.111", "uvicorn[standard]>=0.30"]
 ui = ["streamlit>=1.36"]
-scrape = ["tavily-python>=0.5", "firecrawl-py>=1.0", "redis>=5.0"]
-eval = ["llm-guard>=0.3", "openpyxl>=3.1"]
+scrape = [
+    "tavily-python>=0.5",
+    "firecrawl-py>=1.0",
+    "redis>=5.0",
+    "trafilatura>=2.0",
+    "lxml>=5.0",
+    "tldextract>=5.1",
+]
+eval = [
+    "llm-guard>=0.3",
+    "openpyxl>=3.1",
+    "trafilatura>=2.0",
+    "tldextract>=5.1",
+]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",

@@ -148,8 +148,9 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
 
 - **Status:** accepted
 - **Context:** Many founder-owned title and property-management firms have no marketing team page, so requiring one would reject firms whose management team is documented in state filings.
-- **Decision:** A state registry page (Sunbiz or DBPR) that lists at least two named officers with roles satisfies `management_evidence_url` for G3. A marketing team page is preferred but not required. A single named officer does not satisfy the rule.
-- **Consequence:** G3 evidence can come from the registry even when `management_evidence_url` equals `principal_source_url`, provided the page shows at least two named people. Management still scores 20 on that evidence.
+- **Decision:** A **public Sunbiz or DBPR detail/filing page** that lists at least two named officers with roles satisfies `management_evidence_url` for G3. A marketing team page is preferred but not required. A single named officer does not satisfy the rule. A Sunbiz search-results page is partial evidence only.
+- **Evidence hierarchy (2026-11-12):** `principal_source_url` and ownership evidence must be the public Sunbiz/DBPR detail/filing page. GovFiles detail is **enrichment/extraction only** and never becomes `principal_source_url`, G3 evidence, or ownership evidence. Approved registry evidence hosts are `myfloridalicense.com`, `sunbiz.org`, and `dos.fl.gov`, with apex matching (`host == approved or host.endswith("." + approved)`).
+- **Consequence:** G3 evidence can come from the public registry page even when `management_evidence_url` equals `principal_source_url`, provided the page shows at least two named people. Management still scores 20 on that evidence. GovFiles fields can guide the lookup but cannot satisfy the rubric.
 
 ## ADR-023 — Risk flags for due diligence
 
@@ -360,6 +361,153 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
   network calls; provider clients are lazy. The Studio factory deliberately omits the
   SQLite cache because creating it inside the async factory triggers LangGraph's
   blockbuster guard (`BlockingError: os.mkdir`). The CLI keeps the cache.
+
+## ADR-038 — Discovery is measured by crawl-worthiness, not golden recall
+
+- **Status:** accepted
+- **Context:** The golden set contains known target companies; discovery can return
+  valid companies that were never labeled. Using golden recall as the discovery metric
+  would score useful new finds as failures. Discovery also needs a durable record of
+  every search response before the bouncer clears state.
+- **Decision:** Score discovery on fetch success for official-company samples,
+  crawl-worthy precision, non-target share, and root-domain diversity. The labeled sample
+  is `data/raw/discovery_eval_v1.json`; registry rows are reported separately. Starting
+  gates are fetch success ≥90% and crawl-worthy precision ≥80%. Golden-set recall is
+  deferred to extraction/qualification. Every search node writes its request, normalized
+  results, raw provider payload, usage, and error under
+  `data/generated/discovery/<run_id>/` before returning. A per-run usage ledger records
+  Tavily/GovFiles credits and Groq tokens, and search budgets are checked before calls.
+- **Consequence:** The corrected 40-sample baseline (2026-11-11) passes the fetch gate
+  (18/18 = 100% via Jina) but fails crawl-worthy precision (18/32 = 56.2%). The directory
+  resolver/relevance gate is the next step. Raw results survive aborts and crashes;
+  frozen fixtures can be built from them later without re-spending credits.
+
+## ADR-039 — Jina Reader is capped at 18 requests/minute
+
+- **Status:** accepted
+- **Context:** Jina Reader's free tier allows 20 requests/minute. The eval, directory
+  resolver, and future crawl share the same credential and can otherwise burst past it.
+- **Decision:** `AsyncRateLimiter` is a shared token bucket; `Scraper` acquires a token
+  before every Jina request and is configured to 18 RPM (`JINA_REQUESTS_PER_MINUTE`) for
+  headroom. HTTP 429 honors `Retry-After` and retries with backoff. The eval fetches only
+  official-company samples through this path; directory rows are labeled without fetching.
+- **Consequence:** Jina calls are serialized enough to stay under the free limit. A
+  multi-process crawl must move the token bucket to Redis; a per-process limiter is not
+  sufficient across workers.
+
+## ADR-040 — Relevance, directory resolution, and conservative company dedup
+
+- **Status:** accepted
+- **Context:** Discovery returns company sites, directories, government pages, and
+  registry records together. URL-level dedup cannot tell that a directory page and a
+  registry record may describe the same company, and fetching every directory with the
+  main crawler is expensive.
+- **Decision:** Add a post-bouncer pipeline:
+  1. Deterministic relevance classifies company / directory / government / news /
+     registry. Government and news are dropped; directories go to the resolver.
+  2. `DirectoryResolver` fetches with `httpx`, extracts with `trafilatura` + `lxml`, and
+     tries JSON-LD, metadata, canonical URL, title, and name-matching links first. It
+     calls `openai/gpt-oss-20b` only when deterministic extraction has no company name.
+     Returned LLM URLs must appear in the page's links or are discarded.
+  3. `company_dedup` merges by exact registry ID, root domain, or normalized legal name.
+     Distinct registry IDs never merge by name alone. Fuzzy name merges require a high
+     threshold and carry `fuzzy_company_merge`.
+  4. A resolved official URL that is government/news is dropped after resolution.
+  5. Registry records keep registry IDs but no "official website"; the Sunbiz search URL
+     is not treated as a company URL.
+- **Consequence:** Results expose `resolved_entities` and `company_candidates` alongside
+  the raw candidates; unresolved directories are dropped with a reason in
+  `relevance_dropped`. The discovery eval sample remains the pre-Phase-2 baseline until a
+  post-resolver eval is recorded.
+
+## ADR-041 — Registry enrichment, public evidence, and archived drops
+
+- **Status:** accepted
+- **Date:** 2026-11-12
+- **Context:** GovFiles detail supplies rich structured fields, but the rubric requires
+  public, human-auditable registry evidence. Dropped companies must remain inspectable.
+- **Decision:** GovFiles detail is enrichment/extraction only. `principal_source_url`,
+  G3 evidence, and ownership evidence must be a public Sunbiz/DBPR detail or filing page.
+  A Sunbiz search-results page is partial evidence. Approved registry evidence hosts are
+  `myfloridalicense.com`, `sunbiz.org`, and `dos.fl.gov`, matched by apex plus subdomain.
+  The pipeline enriches registry records with GovFiles, resolves public evidence via Jina,
+  and screens companies. If required discovery-stage evidence cannot be established after
+  gap filling, the company is removed from the crawl-ready set and written to
+  `dropped.json` with company key, name, missing fields, attempted sources, and reason.
+  Financial and contact gaps are deferred to crawl/estimation; G5 unknown is
+  `needs_review`, not an automatic drop.
+- **Consequence:** Registry-only companies remain structured records, not crawl URLs.
+  GovFiles cannot satisfy G3 or ownership. Evidence URLs are the actual public retrieval
+  URLs, and dropped companies remain auditable.
+
+## ADR-042 — High-confidence company-name website search
+
+- **Status:** accepted
+- **Date:** 2026-11-12
+- **Context:** Registry records and some directory-resolved companies have a name but no
+  official website. Searching every candidate would waste Tavily credits and produce
+  wrong-company matches.
+- **Decision:** After company dedup, run one Tavily query
+  (`"<company_name>" Tampa Bay Florida official website`) only for high-confidence
+  companies: public registry evidence present, active status, target sector term in the
+  name, no government keyword, and at least two normalized name tokens. Reject
+  directory/government/news results with the relevance policy; require name/title
+  similarity ≥70 and flag ambiguous or weak matches. Record one Tavily credit per
+  query and enforce the per-run budget.
+- **Consequence:** Missing websites remain `None` with review flags; no search is made
+  for inactive, government, low-signal, or unresolved-evidence companies. The resolver
+  and evidence hierarchy remain unchanged.
+
+## ADR-043 — Directory resolver off by default; keep registry enrichment
+
+- **Status:** accepted
+- **Date:** 2026-11-12
+- **Context:** The fixed-denominator eval (`20261112-165800`) mapped 3 of 12
+  directory inputs to official URLs. Two of the three were duplicates/aliases of
+  companies already found (`tampatitle.com` was an original official input;
+  `dennisrealtyrentals.com` was already the Dennis company). Only one was a new
+  company (`oldtampabaytitle.com`). Eight directories remained unresolved. The
+  resolver added httpx/trafilatura fetches, Tavily website searches, GPT URL
+  judgement, and post-search duplicate cleanup for a net gain of one company.
+  Registry enrichment, by contrast, produced 8/8 public Sunbiz detail records and
+  5/8 with at least two officers in the earlier live run.
+- **Decision:** Use the simpler discovery graph by default:
+  `relevance -> enrich_registry -> resolve_registry_evidence -> company_dedup ->
+  screen_companies`. Directory candidates are dropped at relevance with reason
+  `directory_skipped`. The directory resolver, company URL search, and URL judge
+  remain in the codebase but are only wired when
+  `enable_directory_resolver=True` (`ENABLE_DIRECTORY_RESOLVER=true`). Registry
+  enrichment and public-evidence resolution stay on by default. The frozen
+  40-sample baseline and its labels are unchanged.
+- **Consequence:** The default run is cheaper and simpler, and does not resolve
+  directory pages. The experimental path is reproducible for a future retest.
+  Revisit only if the resolver can show a meaningful net-new-company rate (target
+  at least 25% of directory inputs), handle blocked directory pages, and dedup
+  after URL search.
+
+## ADR-044 — Record source blocks and stop repeated calls per host
+
+- **Status:** accepted
+- **Date:** 2026-11-12
+- **Context:** Sunbiz began returning a Cloudflare `403` / "Just a moment..."
+  challenge to both direct requests and Jina Reader. Jina returned HTTP 200 with a
+  359-character warning page, which the quality gate rejected. The resolver
+  recorded this as `search_page_only`, the archive lost the reason, and every
+  registry record retried the same blocked host.
+- **Decision:** Classify upstream failures explicitly (`blocked`,
+  `rate_limited`, `http_error`, `network_error`, `low_quality`, `not_found`) and
+  carry the reason, source, backend, and target status into `RegistryProfile`,
+  `registry_evidence/`, and `dropped.json`. Keep `search_page_only` only for a
+  successfully fetched search page with no matching detail link. Add a per-host
+  circuit breaker: after a blocked/rate-limited result it opens for a cooldown,
+  short-circuits later URLs on that host with `host_circuit_open`, and allows one
+  half-open probe after the cooldown. The breaker is keyed by target host, not
+  Jina. Defaults: enabled, threshold 1, cooldown 600 seconds
+  (`SCRAPE_CIRCUIT_*`). Do not bypass Cloudflare or other access controls.
+- **Consequence:** A blocked Sunbiz run records honest evidence and spends one
+  fetch, not one per registry record. Other approved hosts have independent
+  breakers. DBPR/DFS source adapters remain future work; the current resolver
+  still has Sunbiz-specific detail parsing. The frozen baseline is unchanged.
 
 ---
 

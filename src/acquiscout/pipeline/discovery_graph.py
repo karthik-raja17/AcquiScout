@@ -17,13 +17,19 @@ from langgraph.types import Send
 
 from acquiscout.config import Settings
 from acquiscout.observability import configure_langsmith, tracing_metadata
-from acquiscout.pipeline.nodes import DiscoveryDeps, make_nodes
+from acquiscout.pipeline.nodes import DiscoveryDeps, make_nodes, manifest_payload
 from acquiscout.pipeline.state import DiscoveryState, initial_state
 
 SERIALIZED_MODELS = [
     ("acquiscout.schemas", "Candidate"),
     ("acquiscout.schemas", "QueryHit"),
     ("acquiscout.schemas", "SearchTask"),
+    ("acquiscout.schemas", "UsageRecord"),
+    ("acquiscout.schemas", "ResolvedEntity"),
+    ("acquiscout.schemas", "CompanyCandidate"),
+    ("acquiscout.schemas", "RegistryOfficer"),
+    ("acquiscout.schemas", "RegistryProfile"),
+    ("acquiscout.schemas", "Confidence"),
 ]
 
 
@@ -78,6 +84,11 @@ def build_discovery_graph(
     builder.add_node("bouncer", nodes["bouncer"])
     builder.add_node("abort_node", nodes["abort_node"])
     builder.add_node("resolve", nodes["resolve"])
+    builder.add_node("relevance", nodes["relevance"])
+    builder.add_node("enrich_registry", nodes["enrich_registry"])
+    builder.add_node("resolve_registry_evidence", nodes["resolve_registry_evidence"])
+    builder.add_node("company_dedup", nodes["company_dedup"])
+    builder.add_node("screen_companies", nodes["screen_companies"])
 
     builder.add_edge(START, "planner")
     builder.add_conditional_edges(
@@ -93,7 +104,22 @@ def build_discovery_graph(
         {"bouncer": "bouncer", "abort_node": "abort_node"},
     )
     builder.add_edge("bouncer", "resolve")
-    builder.add_edge("resolve", END)
+    builder.add_edge("resolve", "relevance")
+
+    if deps.settings.enable_directory_resolver:
+        builder.add_node("resolve_directories", nodes["resolve_directories"])
+        builder.add_node("resolve_company_urls", nodes["resolve_company_urls"])
+        builder.add_edge("relevance", "resolve_directories")
+        builder.add_edge("resolve_directories", "enrich_registry")
+        builder.add_edge("company_dedup", "resolve_company_urls")
+        builder.add_edge("resolve_company_urls", "screen_companies")
+    else:
+        builder.add_edge("relevance", "enrich_registry")
+        builder.add_edge("company_dedup", "screen_companies")
+
+    builder.add_edge("enrich_registry", "resolve_registry_evidence")
+    builder.add_edge("resolve_registry_evidence", "company_dedup")
+    builder.add_edge("screen_companies", END)
     builder.add_edge("abort_node", END)
     return builder.compile(checkpointer=checkpointer)
 
@@ -112,7 +138,18 @@ async def run_discovery(
         "run_name": f"discovery-{state['run_id']}",
         "metadata": tracing_metadata(deps.settings),
     }
-    return cast(DiscoveryState, await graph.ainvoke(state, config))
+    final = cast(DiscoveryState, await graph.ainvoke(state, config))
+    if deps.archive is not None:
+        await deps.archive.write_usage(
+            {
+                "totals": deps.usage.totals() if deps.usage is not None else {},
+                "records": [record.model_dump(mode="json") for record in final.get("usage") or []],
+            }
+        )
+        manifest = manifest_payload(final)
+        manifest["raw_search_files"] = deps.archive.search_files
+        await deps.archive.write_manifest(manifest)
+    return final
 
 
 __all__ = [

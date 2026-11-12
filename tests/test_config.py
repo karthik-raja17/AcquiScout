@@ -17,6 +17,10 @@ def test_v1_defaults() -> None:
     assert settings.min_revenue_usd == 1_500_000
     assert settings.min_ebitda_usd == 500_000
     assert settings.audit_sample_rate == 0.20
+    assert settings.enable_directory_resolver is False
+    assert settings.scrape_circuit_enabled is True
+    assert settings.scrape_circuit_failure_threshold == 1
+    assert settings.scrape_circuit_cooldown_seconds == 600
 
 
 def test_default_funnel_is_monotonic() -> None:
@@ -67,6 +71,16 @@ def test_prod_rejects_fixture_flags(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_capture_and_replay_are_mutually_exclusive() -> None:
     with pytest.raises(ValidationError, match="mutually exclusive"):
         _settings(capture_search=True, use_fixtures=True)
+
+
+def test_blank_optional_secrets_become_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JINA_API_KEY", "")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "")
+
+    settings = _settings()
+
+    assert settings.jina_api_key is None
+    assert settings.firecrawl_api_key is None
 
 
 def test_langsmith_tracing_requires_key() -> None:

@@ -18,14 +18,26 @@ from acquiscout.pipeline.export import export_run
 from acquiscout.pipeline.icp import SEARCH_HINTS, build_icp
 from acquiscout.pipeline.nodes import DiscoveryDeps, canonicalize_url
 from acquiscout.pipeline.runlog import append_discovery_run
-from acquiscout.schemas import Candidate, QueryHit, SearchTask
+from acquiscout.schemas import (
+    Candidate,
+    Confidence,
+    QueryHit,
+    RegistryOfficer,
+    RegistryProfile,
+    ResolvedEntity,
+    SearchTask,
+)
+from acquiscout.services.company_url import CompanyUrlResult
+from acquiscout.sources.archive import RunArchive
 from acquiscout.sources.cache import SQLiteCache, cache_key
 from acquiscout.sources.dlq import push_failure
 from acquiscout.sources.fixtures import FixtureMissing, fixture_key, load_fixture, save_fixture
 from acquiscout.sources.govfiles import GovFilesSearchProvider
 from acquiscout.sources.planner import GroqPlanner, _extract_tasks, build_prompt
 from acquiscout.sources.policy import SourcePolicy
+from acquiscout.sources.registry_evidence import RegistryEvidence
 from acquiscout.sources.tavily import TAVILY_VERSION, TavilySearchProvider
+from acquiscout.sources.usage import UsageTracker
 
 
 def make_settings(**overrides: object) -> Settings:
@@ -94,6 +106,94 @@ class FakeResolver:
         return self.url
 
 
+class FakeDirectory:
+    last_usage: dict[str, int] | None = None
+
+    async def resolve(self, candidate: Candidate) -> ResolvedEntity:
+        self.last_usage = {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+        }
+        return ResolvedEntity(
+            company_name="Acme Title",
+            official_url="https://acmetitle.com/",
+            root_domain="acmetitle.com",
+            method="llm",
+            confidence=Confidence.HIGH,
+            sources=[candidate],
+        )
+
+
+class FakeGovernmentDirectory:
+    last_usage: dict[str, int] | None = None
+
+    async def resolve(self, candidate: Candidate) -> ResolvedEntity:
+        return ResolvedEntity(
+            company_name="Hillsborough County Sheriff's Office",
+            official_url="https://joinhcso.com/",
+            root_domain="joinhcso.com",
+            method="llm",
+            confidence=Confidence.HIGH,
+            sources=[candidate],
+        )
+
+
+class FakeGovFiles(FakeProvider):
+    async def get_company(self, jurisdiction: str, entity_number: str) -> RegistryProfile:
+        return RegistryProfile(
+            status="active",
+            legal_form="corporation",
+            officers=[RegistryOfficer(name="Amy Gregory", title="President")],
+            public_entity_url=(
+                "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults/EntityName/x/Page1"
+            ),
+            govfiles_detail_url=(
+                f"https://api.govfiles.dev/v2/companies/{jurisdiction}/{entity_number}"
+            ),
+        )
+
+
+class FakeRegistryEvidence:
+    last_text = "public evidence text"
+
+    async def resolve(self, public_entity_url: str, entity_number: str) -> RegistryEvidence:
+        return RegistryEvidence(
+            public_detail_url=(
+                "https://search.sunbiz.org/Inquiry/CorporationSearch/"
+                "SearchResultDetail?aggregateId=domp-h30572"
+            ),
+            legal_form="Florida Profit Corporation",
+            status="ACTIVE",
+            officers=[
+                RegistryOfficer(name="Amy Gregory", title="President"),
+                RegistryOfficer(name="Dana Reed", title="Secretary"),
+            ],
+            evidence_status="public_detail",
+        )
+
+
+class FakeBlockedEvidence:
+    last_text = "Title: Just a moment..."
+
+    async def resolve(self, public_entity_url: str, entity_number: str) -> RegistryEvidence:
+        return RegistryEvidence(
+            evidence_status="blocked",
+            reason="cloudflare_challenge",
+            source="sunbiz",
+            http_status=403,
+            backend="jina",
+        )
+
+
+class FakeCompanyUrl:
+    async def resolve(self, company_name: str) -> CompanyUrlResult:
+        return CompanyUrlResult(
+            official_url="https://hillsboroughtitle.com/",
+            confidence=Confidence.MEDIUM,
+        )
+
+
 def deps_for(
     planner: FakePlanner,
     tavily: FakeProvider,
@@ -146,8 +246,255 @@ async def test_successful_run_dedups_and_resolves() -> None:
         for candidate in final["deduplicated_candidates"]
         if candidate.identifier_kind == "registry_id"
     )
-    assert registry.resolution_status == "resolved"
-    assert registry.crawl_url == "https://sunbiz.org/P123"
+    assert registry.resolution_status == "none"
+    assert registry.crawl_url is None
+
+
+@pytest.mark.asyncio
+async def test_directory_candidate_is_resolved_and_deduped() -> None:
+    directory = FakeDirectory()
+    deps = DiscoveryDeps(
+        settings=make_settings(enable_directory_resolver=True),
+        planner=FakePlanner([task(0, "tavily_web", "title tampa")]),
+        tavily=FakeProvider(
+            "tavily_web",
+            [{"url": "https://leadiq.com/c/acme-title", "title": "Acme Title | LeadIQ"}],
+        ),
+        govfiles=FakeProvider("govfiles_registry"),
+        directory=directory,  # type: ignore[arg-type]
+        usage=UsageTracker(make_settings(enable_directory_resolver=True)),
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-directory")
+
+    assert final["run_status"] == "completed"
+    assert len(final["directory_candidates"]) == 1
+    assert len(final["company_candidates"]) == 1
+    company = final["company_candidates"][0]
+    assert company.company_name == "Acme Title"
+    assert company.official_url == "https://acmetitle.com/"
+    assert company.root_domain == "acmetitle.com"
+    assert len(final["usage"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_directory_candidate_is_dropped_by_default() -> None:
+    deps = DiscoveryDeps(
+        settings=make_settings(),
+        planner=FakePlanner([task(0, "tavily_web", "title tampa")]),
+        tavily=FakeProvider(
+            "tavily_web",
+            [{"url": "https://leadiq.com/c/acme-title", "title": "Acme Title | LeadIQ"}],
+        ),
+        govfiles=FakeProvider("govfiles_registry"),
+        directory=FakeDirectory(),  # type: ignore[arg-type]
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-simple")
+
+    assert final["run_status"] == "completed"
+    assert final["directory_candidates"] == []
+    assert final["company_candidates"] == []
+    assert any(item.get("reason") == "directory_skipped" for item in final["relevance_dropped"])
+
+
+@pytest.mark.asyncio
+async def test_resolved_government_url_is_dropped() -> None:
+    deps = DiscoveryDeps(
+        settings=make_settings(enable_directory_resolver=True),
+        planner=FakePlanner([task(0, "tavily_web", "sheriff")]),
+        tavily=FakeProvider(
+            "tavily_web",
+            [{"url": "https://leadiq.com/c/hcso", "title": "Sheriff | LeadIQ"}],
+        ),
+        govfiles=FakeProvider("govfiles_registry"),
+        directory=FakeGovernmentDirectory(),  # type: ignore[arg-type]
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-gov-dir")
+
+    assert final["company_candidates"] == []
+    assert any(item.get("reason") == "resolved:government" for item in final["relevance_dropped"])
+
+
+@pytest.mark.asyncio
+async def test_registry_enrichment_and_public_evidence_are_kept() -> None:
+    deps = DiscoveryDeps(
+        settings=make_settings(),
+        planner=FakePlanner([task(0, "govfiles_registry", "Hillsborough Title")]),
+        tavily=FakeProvider("tavily_web"),
+        govfiles=FakeGovFiles(
+            "govfiles_registry",
+            [
+                {
+                    "entity_id": "H30572",
+                    "jurisdiction": "us_fl",
+                    "legal_name": "HILLSBOROUGH TITLE, INC.",
+                    "url": (
+                        "https://search.sunbiz.org/Inquiry/CorporationSearch/"
+                        "SearchResults/EntityName/x/Page1"
+                    ),
+                }
+            ],
+        ),
+        registry_evidence=FakeRegistryEvidence(),  # type: ignore[arg-type]
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-registry")
+
+    assert len(final["company_candidates"]) == 1
+    company = final["company_candidates"][0]
+    assert company.official_url is None
+    assert company.registry_profile is not None
+    assert company.registry_profile.evidence_status == "public_detail"
+    assert company.registry_profile.public_detail_url is not None
+    assert company.registry_profile.govfiles_detail_url is not None
+    assert "api.govfiles.dev" not in (company.registry_profile.public_detail_url or "")
+
+
+@pytest.mark.asyncio
+async def test_registry_without_public_evidence_is_dropped(tmp_path: Path) -> None:
+    deps = DiscoveryDeps(
+        settings=make_settings(discovery_archive_dir=tmp_path),
+        planner=FakePlanner([task(0, "govfiles_registry", "Hillsborough Title")]),
+        tavily=FakeProvider("tavily_web"),
+        govfiles=FakeGovFiles(
+            "govfiles_registry",
+            [
+                {
+                    "entity_id": "H30572",
+                    "jurisdiction": "us_fl",
+                    "legal_name": "HILLSBOROUGH TITLE, INC.",
+                }
+            ],
+        ),
+        archive=RunArchive(tmp_path, "run-drop"),
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-drop")
+
+    assert final["company_candidates"] == []
+    assert final["dropped_companies"][0]["reason"] == "registry_evidence_failed"
+    assert final["dropped_companies"][0]["evidence_reason"] == "resolver_unavailable"
+    assert (tmp_path / "run-drop" / "dropped.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_blocked_registry_evidence_is_archived_with_reason(tmp_path: Path) -> None:
+    deps = DiscoveryDeps(
+        settings=make_settings(discovery_archive_dir=tmp_path),
+        planner=FakePlanner([task(0, "govfiles_registry", "Hillsborough Title")]),
+        tavily=FakeProvider("tavily_web"),
+        govfiles=FakeGovFiles(
+            "govfiles_registry",
+            [
+                {
+                    "entity_id": "H30572",
+                    "jurisdiction": "us_fl",
+                    "legal_name": "HILLSBOROUGH TITLE, INC.",
+                    "url": (
+                        "https://search.sunbiz.org/Inquiry/CorporationSearch/"
+                        "SearchResults/EntityName/x/Page1"
+                    ),
+                }
+            ],
+        ),
+        registry_evidence=FakeBlockedEvidence(),  # type: ignore[arg-type]
+        archive=RunArchive(tmp_path, "run-blocked"),
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-blocked")
+
+    assert final["company_candidates"] == []
+    dropped = final["dropped_companies"][0]
+    assert dropped["reason"] == "registry_evidence_blocked"
+    assert dropped["evidence_status"] == "blocked"
+    assert dropped["evidence_reason"] == "cloudflare_challenge"
+    assert dropped["evidence_source"] == "sunbiz"
+    assert dropped["evidence_http_status"] == 403
+    archived = next((tmp_path / "run-blocked" / "registry_evidence").glob("*.json"))
+    payload = json.loads(archived.read_text(encoding="utf-8"))
+    assert payload["evidence_status"] == "blocked"
+    assert payload["evidence_reason"] == "cloudflare_challenge"
+    assert payload["evidence_source"] == "sunbiz"
+
+
+@pytest.mark.asyncio
+async def test_high_confidence_registry_gets_official_url() -> None:
+    deps = DiscoveryDeps(
+        settings=make_settings(enable_directory_resolver=True),
+        planner=FakePlanner([task(0, "govfiles_registry", "Hillsborough Title")]),
+        tavily=FakeProvider("tavily_web"),
+        govfiles=FakeGovFiles(
+            "govfiles_registry",
+            [
+                {
+                    "entity_id": "H30572",
+                    "jurisdiction": "us_fl",
+                    "legal_name": "HILLSBOROUGH TITLE, INC.",
+                    "url": (
+                        "https://search.sunbiz.org/Inquiry/CorporationSearch/"
+                        "SearchResults/EntityName/x/Page1"
+                    ),
+                }
+            ],
+        ),
+        registry_evidence=FakeRegistryEvidence(),  # type: ignore[arg-type]
+        company_url=FakeCompanyUrl(),  # type: ignore[arg-type]
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-url")
+
+    assert len(final["company_candidates"]) == 1
+    company = final["company_candidates"][0]
+    assert company.official_url == "https://hillsboroughtitle.com/"
+    assert company.official_url_method == "search"
+
+
+@pytest.mark.asyncio
+async def test_run_writes_lossless_archive_and_usage(tmp_path: Path) -> None:
+    settings = make_settings(discovery_archive_dir=tmp_path)
+    deps = DiscoveryDeps(
+        settings=settings,
+        planner=FakePlanner([task(0, "tavily_web", "title tampa")]),
+        tavily=FakeProvider("tavily_web", [{"url": "https://example.com", "title": "Example"}]),
+        govfiles=FakeProvider("govfiles_registry"),
+        archive=RunArchive(tmp_path, "run-archive"),
+        usage=UsageTracker(settings),
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-archive")
+
+    assert final["run_status"] == "completed"
+    assert len(final["usage"]) == 1
+    root = tmp_path / "run-archive"
+    assert (root / "plan.json").exists()
+    assert (root / "manifest.json").exists()
+    assert (root / "usage.json").exists()
+    assert (root / "raw" / "tavily_web" / "tavily_web-0.json").exists()
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["raw_search_files"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_failure_is_archived_before_abort(tmp_path: Path) -> None:
+    settings = make_settings(discovery_archive_dir=tmp_path)
+    deps = DiscoveryDeps(
+        settings=settings,
+        planner=FakePlanner([task(0, "tavily_web", "title tampa")]),
+        tavily=FakeProvider("tavily_web", error=TimeoutError("down")),
+        govfiles=FakeProvider("govfiles_registry"),
+        archive=RunArchive(tmp_path, "run-failed"),
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-failed")
+
+    assert final["run_status"] == "aborted"
+    raw_file = tmp_path / "run-failed" / "raw" / "tavily_web" / "tavily_web-0.json"
+    assert raw_file.exists()
+    payload = json.loads(raw_file.read_text(encoding="utf-8"))
+    assert payload["error"]["error_type"] == "TimeoutError"
+    assert (tmp_path / "run-failed" / "manifest.json").exists()
 
 
 @pytest.mark.asyncio

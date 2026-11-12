@@ -16,7 +16,7 @@ Do not substitute without an ADR in `DECISIONS.md`.
 | Dashboard | Streamlit |
 | Storage | PostgreSQL (managed in prod), Redis (cache + queue state), SQLite (local discovery cache/checkpoints) |
 | Search/scrape | Tavily/Serper, Firecrawl/Jina AI Reader; GovFiles registry adapter (personal-project exception, ADR-028) |
-| Dedup | URL canonicalization in discovery; `rapidfuzz` entity resolution planned |
+| Dedup | URL canonicalization + conservative company dedup (`rapidfuzz` merges flagged) |
 | Retries | `tenacity` + DLQ |
 | Guardrails | `llm-guard`, approved-source policy |
 | Tests / lint | `pytest`, `ruff` |
@@ -40,7 +40,7 @@ src/acquiscout/     application code (config, schemas, pipeline)
   pipeline/         LangGraph discovery subgraph (state, nodes, wiring)
   sources/          approved-source clients, policy, cache, fixtures, DLQ
   dev/              developer-only helpers (optional fixture rescue)
-  services/         dedup, scoring, verification, export
+  services/         relevance, company dedup, company URL search, scoring, verification, export
 api/                FastAPI app
 dashboard/          Streamlit app
 scripts/            one-off operators (ingest golden set, backfills)
@@ -95,6 +95,12 @@ python -m acquiscout.pipeline       # no external calls
 - Do not claim metrics that are not in the latest eval run.
 - Discovery fixtures (`dev_fixtures/`) are per-developer, gitignored, and never active in
   prod; `Settings` refuses to construct with fixture flags when `app_env` is `prod`.
+- Discovery crawl-worthiness uses `data/raw/discovery_eval_v1.json`; golden-set recall is
+  deliberately not a discovery metric. Crawl outcomes feed back into the next eval.
+- GovFiles detail is **enrichment/extraction only**; public Sunbiz/DBPR detail pages are
+  the evidence URLs for G3/ownership. Approved registry evidence hosts:
+  `myfloridalicense.com`, `sunbiz.org`, `dos.fl.gov` (apex + subdomains).
+- Dropped companies are archived in `dropped.json` with a reason; never delete them.
 
 ## 7. Cost and performance
 
@@ -104,6 +110,13 @@ python -m acquiscout.pipeline       # no external calls
 - Log tokens, latency, and cost per prospect; target <$5 per qualified prospect.
 - LangSmith tracing is opt-in (`LANGSMITH_TRACING`); the app bridges settings to the
   LangChain/LangSmith env vars at run start. Never log the LangSmith key.
+- Jina Reader's free tier is 20 requests/minute. `Scraper` uses a shared token-bucket
+  limiter capped at 18 RPM; the eval and future crawl share it. Move the bucket to Redis
+  if multiple worker processes crawl concurrently.
+- Every search node writes a lossless archive under `data/generated/discovery/<run_id>/`
+  before returning. Never rely on the bouncer to persist raw results.
+- Record Tavily/GovFiles credits and Groq tokens in the usage ledger; do not exceed the
+  configured per-run budgets.
 - Prefer batch calls and compressed payloads; never dump full pages into logs.
 
 ## 8. Security

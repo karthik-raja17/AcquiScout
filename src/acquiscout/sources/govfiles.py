@@ -22,7 +22,12 @@ from tenacity import (
 )
 
 from acquiscout.config import Settings
-from acquiscout.schemas import Candidate, SearchTask
+from acquiscout.schemas import (
+    Candidate,
+    RegistryOfficer,
+    RegistryProfile,
+    SearchTask,
+)
 from acquiscout.sources.cache import SQLiteCache
 from acquiscout.sources.fixtures import (
     FixtureMissing,
@@ -80,20 +85,26 @@ class GovFilesSearchProvider:
         return params
 
     async def search(self, task: SearchTask) -> list[dict[str, Any]]:
+        results, _ = await self.search_raw(task)
+        return results
+
+    async def search_raw(
+        self, task: SearchTask
+    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
         params = self._params(task)
         query = self._clean_query(task.query)
         key = fixture_key(self.name, query, params, GOVFILES_VERSION)
 
         if self._settings.use_fixtures:
             payload = load_fixture(self._settings.dev_fixtures_dir, "search", self.name, key)
-            return cast(list[dict[str, Any]], payload.get("results", []))
+            return cast(list[dict[str, Any]], payload.get("results", [])), payload
 
         if self._cache is not None:
             cached = self._cache.get(self.name, query, params, GOVFILES_VERSION)
             if isinstance(cached, dict):
-                return cast(list[dict[str, Any]], cached.get("results", []))
+                return cast(list[dict[str, Any]], cached.get("results", [])), cached
 
-        results = await self._live(query, params)
+        results, raw = await self._live(query, params)
         if self._cache is not None:
             self._cache.set(self.name, query, params, GOVFILES_VERSION, {"results": results})
         if self._settings.capture_search:
@@ -104,9 +115,11 @@ class GovFilesSearchProvider:
                 key,
                 {"results": results},
             )
-        return results
+        return results, raw
 
-    async def _live(self, query: str, params: dict[str, object]) -> list[dict[str, Any]]:
+    async def _live(
+        self, query: str, params: dict[str, object]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         body = {"q": query, **params}
         payload = await self._post(f"{self._base_url()}/v2/companies/search", body)
         raw_results = payload.get("results", [])
@@ -127,7 +140,7 @@ class GovFilesSearchProvider:
                     "url": company.get("entity_url") or company.get("url"),
                 }
             )
-        return normalized
+        return normalized, payload
 
     async def _post(self, url: str, body: dict[str, object]) -> dict[str, Any]:
         client = self._client()
@@ -157,6 +170,71 @@ class GovFilesSearchProvider:
                 headers={"User-Agent": "AcquiScout/0.1 (+approved-source research)"},
             )
         return self._http
+
+    async def get_company(self, jurisdiction: str, entity_number: str) -> RegistryProfile:
+        url = f"{self._base_url()}/v2/companies/{jurisdiction}/{entity_number}"
+        response = await self._client().get(url, headers=self._headers())
+        response.raise_for_status()
+        payload = cast(dict[str, Any], response.json())
+        return self._profile_from_payload(payload, url)
+
+    @staticmethod
+    def _profile_from_payload(payload: dict[str, Any], detail_url: str) -> RegistryProfile:
+        addresses = payload.get("addresses") or {}
+        registered = addresses.get("registered") or {}
+        mailing = addresses.get("mailing") or {}
+        names = [
+            str(item.get("name"))
+            for item in payload.get("names") or []
+            if isinstance(item, dict) and item.get("name")
+        ]
+        officers: list[RegistryOfficer] = []
+        for party in payload.get("parties") or []:
+            if not isinstance(party, dict) or not party.get("name"):
+                continue
+            roles = party.get("roles") or []
+            role = roles[0] if isinstance(roles, list) and roles else {}
+            officers.append(
+                RegistryOfficer(
+                    name=str(party["name"]),
+                    title=str(role.get("title"))
+                    if isinstance(role, dict) and role.get("title")
+                    else None,
+                    role=str(role.get("kind"))
+                    if isinstance(role, dict) and role.get("kind")
+                    else None,
+                    address=(
+                        str((party.get("address") or {}).get("raw"))
+                        if isinstance(party.get("address"), dict)
+                        else None
+                    ),
+                )
+            )
+        identifiers = [
+            f"{item.get('scheme')}:{item.get('value')}"
+            for item in payload.get("identifiers") or []
+            if isinstance(item, dict) and item.get("scheme") and item.get("value")
+        ]
+        return RegistryProfile(
+            status=str(payload["status"]) if payload.get("status") else None,
+            status_raw=str(payload["status_raw"]) if payload.get("status_raw") else None,
+            legal_form=str(payload["legal_form"]) if payload.get("legal_form") else None,
+            legal_form_raw=str(payload["legal_form_raw"])
+            if payload.get("legal_form_raw")
+            else None,
+            formed_on=payload.get("formed_on"),
+            officers=officers,
+            registered_address=str(registered.get("raw")) if registered.get("raw") else None,
+            mailing_address=str(mailing.get("raw")) if mailing.get("raw") else None,
+            names=names,
+            filings=[item for item in payload.get("filings") or [] if isinstance(item, dict)],
+            identifiers=identifiers,
+            public_entity_url=str(payload["entity_url"]) if payload.get("entity_url") else None,
+            public_detail_url=None,
+            govfiles_detail_url=detail_url,
+            evidence_status="none",
+            source_method="govfiles_detail",
+        )
 
     async def resolve(self, candidate: Candidate) -> str | None:
         if candidate.crawl_url is not None:

@@ -34,6 +34,27 @@ DENIED_SUFFIXES: tuple[str, ...] = tuple(f".{host}" for host in DENIED_HOSTS)
 
 ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 
+APPROVED_REGISTRY_HOSTS: frozenset[str] = frozenset(
+    {
+        "myfloridalicense.com",  # DBPR: apex covers www + www2
+        "sunbiz.org",  # Sunbiz: apex covers search. + efile.
+        "dos.fl.gov",
+    }
+)
+
+
+def is_approved_registry_host(host: str) -> bool:
+    normalized = host.lower().rstrip(".")
+    return any(
+        normalized == approved or normalized.endswith(f".{approved}")
+        for approved in APPROVED_REGISTRY_HOSTS
+    )
+
+
+def is_approved_registry_url(url: str) -> bool:
+    return is_approved_registry_host(urlsplit(url).hostname or "")
+
+
 BLOCKED_HOSTNAMES: frozenset[str] = frozenset(
     {"localhost", "localhost.localdomain", "ip6-localhost", "metadata.google.internal"}
 )
@@ -143,6 +164,7 @@ class SourcePolicy:
 
 __all__ = [
     "ALLOWED_SCHEMES",
+    "APPROVED_REGISTRY_HOSTS",
     "BLOCKED_HOSTNAMES",
     "Classification",
     "DENIED_HOSTS",
@@ -153,4 +175,6 @@ __all__ = [
     "PolicyViolation",
     "REGISTRY_PDF_HOSTS",
     "SourcePolicy",
+    "is_approved_registry_host",
+    "is_approved_registry_url",
 ]
