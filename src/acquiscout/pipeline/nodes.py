@@ -25,6 +25,7 @@ from acquiscout.schemas import (
 )
 from acquiscout.services.company_dedup import dedup_entities, root_domain
 from acquiscout.services.company_url import CompanyUrlResolver, high_confidence_company
+from acquiscout.services.registry_metrics import summarize_registry_evidence
 from acquiscout.services.relevance import (
     RelevanceLabel,
     classify,
@@ -246,6 +247,10 @@ def manifest_payload(state: DiscoveryState) -> dict[str, Any]:
             for company in state.get("company_candidates") or []
             if company.registry_profile is not None
             and company.registry_profile.evidence_status == "public_detail"
+        ),
+        "registry_metrics": summarize_registry_evidence(
+            state.get("company_candidates") or [],
+            state.get("dropped_companies") or [],
         ),
         "relevance_dropped": state.get("relevance_dropped") or [],
         "dropped_company_count": len(state.get("dropped_companies") or []),
@@ -749,6 +754,11 @@ def make_nodes(deps: DiscoveryDeps) -> dict[str, Any]:
                     "legal_form",
                     "formed_on",
                     "registered_address",
+                    "license_number",
+                    "license_type",
+                    "license_status",
+                    "license_expiration",
+                    "licensee_name",
                 ):
                     value = getattr(evidence, field)
                     if value is not None:
@@ -885,9 +895,11 @@ def make_nodes(deps: DiscoveryDeps) -> dict[str, Any]:
                 kept.append(company)
                 continue
             if profile is not None and profile.evidence_status == "public_detail":
-                kept.append(company)
-                continue
-            if profile is None:
+                if profile.evidence_source in {None, "sunbiz"}:
+                    kept.append(company)
+                    continue
+                reason = "missing_sunbiz_identity_evidence"
+            elif profile is None:
                 reason = "missing_official_url"
             elif profile.evidence_status in {"blocked", "rate_limited"}:
                 reason = "registry_evidence_blocked"

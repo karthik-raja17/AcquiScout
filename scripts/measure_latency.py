@@ -18,7 +18,7 @@ from typing import Any
 
 from acquiscout.config import get_settings
 from acquiscout.pipeline.discovery_graph import build_discovery_graph, memory_checkpointer
-from acquiscout.pipeline.nodes import DiscoveryDeps
+from acquiscout.pipeline.nodes import DiscoveryDeps, manifest_payload
 from acquiscout.pipeline.state import initial_state
 from acquiscout.services.company_url import CompanyUrlResolver
 from acquiscout.sources.archive import RunArchive
@@ -114,6 +114,15 @@ async def run(output_dir: Path) -> int:
         snapshot = await graph.aget_state(config)
         final = snapshot.values
         total_ms = round((time.perf_counter() - started) * 1000, 1)
+        await archive.write_usage(
+            {
+                "totals": usage.totals(),
+                "records": [record.model_dump(mode="json") for record in final.get("usage") or []],
+            }
+        )
+        manifest = manifest_payload(final)
+        manifest["raw_search_files"] = archive.search_files
+        await archive.write_manifest(manifest)
     finally:
         await planner.aclose()
         await tavily.aclose()

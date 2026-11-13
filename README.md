@@ -31,6 +31,9 @@ Source-backed, human-reviewed M&A research pipeline. Turns fragmented public dat
 - Source blocks are recorded explicitly (`blocked`, `rate_limited`, `http_error`,
   etc.) with source/reason/backend. A per-host circuit breaker stops repeated calls
   to a blocked host. See `docs/source-failures.md` and ADR-044.
+- Registry evidence uses source adapters: Sunbiz for G3/legal identity, DBPR/DFS for
+  license corroboration. `manifest.json` and export include `registry_metrics` by
+  status and source. See ADR-045.
 - Fixed-denominator resolver eval on the frozen 40-sample baseline: official mapping
   18/32 (56.2%) → 21/32 (65.6%), but 2 of 3 conversions were duplicates and only **one
   net-new company** was added; 8/32 unresolved. The simpler graph is the default. See

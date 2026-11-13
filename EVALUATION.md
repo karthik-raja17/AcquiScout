@@ -96,6 +96,7 @@ extraction and qualification.
 | Ownership full-credit rate | records eligible for ownership 15 ÷ records |
 | Evidence partial rate | search-page-only or failed ÷ registry records |
 | Blocked evidence rate | blocked or rate-limited records / registry records |
+| Evidence coverage by source | public-detail records per source / records per source |
 | Drop-missing-evidence rate | records dropped for missing required public evidence ÷ registry records |
 | Company URL resolution rate | high-confidence companies that get an official URL ÷ eligible high-confidence companies |
 | Company URL search precision | correct official websites ÷ search-resolved URLs (manual/LLM review) |

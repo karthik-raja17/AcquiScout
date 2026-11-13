@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -114,6 +115,8 @@ async def run(samples_path: Path, output_dir: Path) -> int:
     registry_public = 0
     registry_officer2 = 0
     registry_active = 0
+    registry_by_source: Counter[str] = Counter()
+    registry_public_by_source: Counter[str] = Counter()
     url_search_eligible = 0
     url_search_resolved = 0
     registry_url_resolved = 0
@@ -141,20 +144,36 @@ async def run(samples_path: Path, output_dir: Path) -> int:
         evidence_row = await evidence.resolve(
             profile.public_entity_url, sample.registry_number or ""
         )
-        if evidence_row is not None:
-            update = {
-                "public_detail_url": evidence_row.public_detail_url,
-                "evidence_status": evidence_row.evidence_status,
-            }
-            for field in ("status", "legal_form", "formed_on", "registered_address"):
-                value = getattr(evidence_row, field)
-                if value is not None:
-                    update[field] = value
-            if evidence_row.officers:
-                update["officers"] = evidence_row.officers
-            profile = profile.model_copy(update=update)
+        update = {
+            "public_detail_url": evidence_row.public_detail_url,
+            "evidence_status": evidence_row.evidence_status,
+            "evidence_reason": evidence_row.reason,
+            "evidence_source": evidence_row.source,
+            "evidence_http_status": evidence_row.http_status,
+            "evidence_backend": evidence_row.backend,
+            "evidence_checked_at": evidence_row.fetched_at,
+        }
+        for field in (
+            "status",
+            "legal_form",
+            "formed_on",
+            "registered_address",
+            "license_number",
+            "license_type",
+            "license_status",
+            "license_expiration",
+            "licensee_name",
+        ):
+            value = getattr(evidence_row, field)
+            if value is not None:
+                update[field] = value
+        if evidence_row.officers:
+            update["officers"] = evidence_row.officers
+        profile = profile.model_copy(update=update)
+        registry_by_source[profile.evidence_source or "unknown"] += 1
         if profile.evidence_status == "public_detail":
             registry_public += 1
+            registry_public_by_source[profile.evidence_source or "unknown"] += 1
         if len(profile.officers) >= 2:
             registry_officer2 += 1
         if (profile.status or "").lower() == "active":
@@ -319,6 +338,12 @@ async def run(samples_path: Path, output_dir: Path) -> int:
                 "evidence_status": (
                     company.registry_profile.evidence_status if company.registry_profile else None
                 ),
+                "evidence_reason": (
+                    company.registry_profile.evidence_reason if company.registry_profile else None
+                ),
+                "evidence_source": (
+                    company.registry_profile.evidence_source if company.registry_profile else None
+                ),
                 "review_flags": company.review_flags,
                 "url_origin": origin,
             }
@@ -378,6 +403,8 @@ async def run(samples_path: Path, output_dir: Path) -> int:
         "registry_public_detail": registry_public,
         "registry_officer2": registry_officer2,
         "registry_active": registry_active,
+        "registry_by_source": dict(sorted(registry_by_source.items())),
+        "registry_public_by_source": dict(sorted(registry_public_by_source.items())),
         "url_search_eligible": url_search_eligible,
         "url_search_resolved": url_search_resolved,
         "registry_url_resolved": registry_url_resolved,

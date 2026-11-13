@@ -82,16 +82,19 @@ Experimental resolver graph (`ENABLE_DIRECTORY_RESOLVER=true`):
 - `services/company_url.py` — experimental high-confidence name → official-website
   search, only wired with `enable_directory_resolver=True`; rejects
   directory/government/news and ambiguous matches.
-- `sources/registry_evidence.py` — public Sunbiz/DBPR detail resolution via Jina;
-  GovFiles detail is enrichment only and never becomes rubric evidence. Evidence
-  status/reason/source/backend are recorded in the profile and archives; blocked
-  sources are distinct from `search_page_only`. See `docs/source-failures.md`.
+- `sources/registry/` — public registry evidence source adapters:
+  `SunbizSource` for corporate identity/officers, `DBPREvidenceSource` and
+  `DFSEvidenceSource` for license corroboration. `sources/registry_evidence.py`
+  is the compatibility facade. Evidence status/reason/source/backend are recorded
+  in the profile and archives; blocked sources are distinct from
+  `search_page_only`. See `docs/source-failures.md`.
 - `APPROVED_REGISTRY_HOSTS` — `myfloridalicense.com`, `sunbiz.org`, `dos.fl.gov` with
   apex/subdomain matching.
 - `pipeline/runlog.py` — appends one idempotent row per run to
   `docs/discovery-runs.md`.
 - `pipeline/export.py` — opt-in JSON export for completed runs to
-  `data/generated/discovery/`; aborted runs are not exported.
+  `data/generated/discovery/`; aborted runs are not exported. Includes
+  `registry_metrics` (status/source counts) alongside companies and drops.
 - `pipeline/studio.py` + `langgraph.json` — `langgraph dev` entry point for the graph
   shape in LangGraph Studio. The CLI path remains `pipeline/__main__.py`.
 - `sources/archive.py` — per-search-node lossless archive under

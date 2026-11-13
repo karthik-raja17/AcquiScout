@@ -509,6 +509,29 @@ Architecture Decision Records (ADRs). Short, dated, reversible-by-ADR. Status va
   breakers. DBPR/DFS source adapters remain future work; the current resolver
   still has Sunbiz-specific detail parsing. The frozen baseline is unchanged.
 
+## ADR-045 — Registry evidence source adapters and source-scoped metrics
+
+- **Status:** accepted
+- **Date:** 2026-11-12
+- **Context:** The evidence resolver was Sunbiz-specific: its detail-link regex
+  and parser only understood `search.sunbiz.org`. DBPR (`myfloridalicense.com`)
+  and DFS (`dos.fl.gov`) were approved hosts but would fail through the Sunbiz
+  parser. There was also no per-source visibility into evidence coverage.
+- **Decision:** Split registry evidence into source adapters behind
+  `RegistrySource`: `SunbizSource`, `DBPREvidenceSource`, and `DFSEvidenceSource`.
+  `RegistryEvidenceResolver` dispatches by target host and keeps the original
+  import path as a facade. Sunbiz remains the G3/legal-identity/ownership source.
+  DBPR and DFS provide license corroboration only; registry-only companies with
+  only DBPR/DFS evidence are dropped as `missing_sunbiz_identity_evidence`.
+  License fields (`license_number`, `license_type`, `license_status`,
+  `license_expiration`, `licensee_name`) are stored on the profile and archive.
+  `registry_metrics` records status/source counts and public-detail counts by
+  source in the run manifest and export.
+- **Consequence:** A GovFiles URL on an approved host is routed to the right
+  parser. Source-specific failures remain visible per source. DBPR/DFS parsers
+  are deliberately conservative (named fields or `parse_failed`); they do not
+  claim G3 or replace Sunbiz. The frozen baseline is unchanged.
+
 ---
 
 ## Resolved client questions

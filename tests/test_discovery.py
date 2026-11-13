@@ -186,6 +186,19 @@ class FakeBlockedEvidence:
         )
 
 
+class FakeDBPREvidence:
+    last_text = "License Number: CGC123456"
+
+    async def resolve(self, public_entity_url: str, entity_number: str) -> RegistryEvidence:
+        return RegistryEvidence(
+            public_detail_url="https://www.myfloridalicense.com/CheckListDetail.asp?SID=123",
+            license_number="CGC123456",
+            license_status="Active",
+            evidence_status="public_detail",
+            source="dbpr",
+        )
+
+
 class FakeCompanyUrl:
     async def resolve(self, company_name: str) -> CompanyUrlResult:
         return CompanyUrlResult(
@@ -417,6 +430,39 @@ async def test_blocked_registry_evidence_is_archived_with_reason(tmp_path: Path)
     assert payload["evidence_status"] == "blocked"
     assert payload["evidence_reason"] == "cloudflare_challenge"
     assert payload["evidence_source"] == "sunbiz"
+    manifest = json.loads((tmp_path / "run-blocked" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["registry_metrics"]["status_counts"] == {"blocked": 1}
+    assert manifest["registry_metrics"]["source_counts"] == {"sunbiz": 1}
+    assert manifest["registry_metrics"]["dropped_by_reason"] == {"registry_evidence_blocked": 1}
+
+
+@pytest.mark.asyncio
+async def test_dbpr_only_evidence_does_not_satisfy_identity_screening() -> None:
+    deps = DiscoveryDeps(
+        settings=make_settings(),
+        planner=FakePlanner([task(0, "govfiles_registry", "Acme Property Management")]),
+        tavily=FakeProvider("tavily_web"),
+        govfiles=FakeGovFiles(
+            "govfiles_registry",
+            [
+                {
+                    "entity_id": "P123",
+                    "jurisdiction": "us_fl",
+                    "legal_name": "ACME PROPERTY MANAGEMENT LLC",
+                    "url": "https://www.myfloridalicense.com/CheckListDetail.asp?SID=123",
+                }
+            ],
+        ),
+        registry_evidence=FakeDBPREvidence(),  # type: ignore[arg-type]
+    )
+
+    final = await run_discovery(deps, checkpointer=memory_checkpointer(), run_id="run-dbpr")
+
+    assert final["company_candidates"] == []
+    dropped = final["dropped_companies"][0]
+    assert dropped["reason"] == "missing_sunbiz_identity_evidence"
+    assert dropped["evidence_status"] == "public_detail"
+    assert dropped["evidence_source"] == "dbpr"
 
 
 @pytest.mark.asyncio
@@ -474,6 +520,7 @@ async def test_run_writes_lossless_archive_and_usage(tmp_path: Path) -> None:
     assert (root / "raw" / "tavily_web" / "tavily_web-0.json").exists()
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["raw_search_files"] == 1
+    assert manifest["registry_metrics"]["profiles"] == 0
 
 
 @pytest.mark.asyncio
@@ -926,6 +973,7 @@ def test_export_run_writes_completed_only(tmp_path: Path) -> None:
     assert payload["run_id"] == "run-export"
     assert payload["status"] == "completed"
     assert payload["candidates"][0]["identifier"] == "https://example.com"
+    assert payload["registry_metrics"]["profiles"] == 0
 
     aborted = {**completed, "run_status": "aborted"}
     assert export_run(aborted, settings, tmp_path) is None

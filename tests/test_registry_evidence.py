@@ -13,6 +13,30 @@ SEARCH_MARKDOWN = (
     'SearchResultDetail?aggregateId=domp-h30572-123 "Go to Detail Screen") | H30572 | Active |\n'
 )
 
+DBPR_MARKDOWN = """
+Markdown Content:
+License Number: CGC123456
+License Type: Certified General Contractor
+License Status: Active
+Expiration Date: 08/31/2027
+Licensee Name: ACME PROPERTY MANAGEMENT LLC
+Business Address:
+123 MAIN STREET
+TAMPA, FL 33601
+"""
+
+DFS_MARKDOWN = """
+Markdown Content:
+License Number: W123456
+License Type: Title Agency
+License Status: Active
+Expiration Date: 09/30/2027
+Licensee Name: ACME TITLE AGENCY LLC
+Business Address:
+456 CENTRAL AVENUE
+ST PETERSBURG, FL 33701
+"""
+
 DETAIL_MARKDOWN = """
 Markdown Content:
 Florida Profit Corporation
@@ -169,3 +193,93 @@ async def test_blocked_search_page_records_cloudflare_reason() -> None:
     assert evidence.source == "sunbiz"
     assert evidence.http_status == 403
     assert evidence.public_detail_url is None
+
+
+@pytest.mark.asyncio
+async def test_dbpr_license_page_is_parsed() -> None:
+    class DBPRScraper(FakeScraper):
+        async def fetch(self, url: str) -> ScrapeResult:
+            return ScrapeResult(url=url, ok=True, text=DBPR_MARKDOWN)
+
+    resolver = RegistryEvidenceResolver(make_settings(), scraper=DBPRScraper())  # type: ignore[arg-type]
+
+    evidence = await resolver.resolve(
+        "https://www.myfloridalicense.com/CheckListDetail.asp?SID=123",
+        "",
+    )
+
+    assert evidence.evidence_status == "public_detail"
+    assert evidence.source == "dbpr"
+    assert evidence.public_detail_url == (
+        "https://www.myfloridalicense.com/CheckListDetail.asp?SID=123"
+    )
+    assert evidence.license_number == "CGC123456"
+    assert evidence.license_type == "Certified General Contractor"
+    assert evidence.license_status == "Active"
+    assert evidence.license_expiration is not None
+    assert evidence.license_expiration.year == 2027
+    assert evidence.licensee_name == "ACME PROPERTY MANAGEMENT LLC"
+
+
+@pytest.mark.asyncio
+async def test_dfs_license_page_is_parsed() -> None:
+    class DFSScraper(FakeScraper):
+        async def fetch(self, url: str) -> ScrapeResult:
+            return ScrapeResult(url=url, ok=True, text=DFS_MARKDOWN)
+
+    resolver = RegistryEvidenceResolver(make_settings(), scraper=DFSScraper())  # type: ignore[arg-type]
+
+    evidence = await resolver.resolve(
+        "https://www.dos.fl.gov/license/123",
+        "",
+    )
+
+    assert evidence.evidence_status == "public_detail"
+    assert evidence.source == "dfs"
+    assert evidence.license_number == "W123456"
+    assert evidence.license_type == "Title Agency"
+    assert evidence.license_status == "Active"
+    assert evidence.licensee_name == "ACME TITLE AGENCY LLC"
+
+
+@pytest.mark.asyncio
+async def test_license_page_without_license_fields_is_not_evidence() -> None:
+    class NameOnlyScraper(FakeScraper):
+        async def fetch(self, url: str) -> ScrapeResult:
+            return ScrapeResult(
+                url=url,
+                ok=True,
+                text="Markdown Content:\nName: ACME PROPERTY MANAGEMENT LLC\n",
+            )
+
+    resolver = RegistryEvidenceResolver(make_settings(), scraper=NameOnlyScraper())  # type: ignore[arg-type]
+
+    evidence = await resolver.resolve(
+        "https://www.myfloridalicense.com/CheckListDetail.asp?SID=123",
+        "",
+    )
+
+    assert evidence.evidence_status == "parse_failed"
+    assert evidence.reason == "no_license_fields"
+
+
+@pytest.mark.asyncio
+async def test_dbpr_search_page_without_license_fields_is_partial() -> None:
+    class DBPRSearchScraper(FakeScraper):
+        async def fetch(self, url: str) -> ScrapeResult:
+            return ScrapeResult(
+                url=url,
+                ok=True,
+                text="Markdown Content:\nLicense Search\nNo records found\n",
+            )
+
+    resolver = RegistryEvidenceResolver(make_settings(), scraper=DBPRSearchScraper())  # type: ignore[arg-type]
+
+    evidence = await resolver.resolve(
+        "https://www.myfloridalicense.com/wl11.asp?mode=2",
+        "",
+    )
+
+    assert evidence.evidence_status == "search_page_only"
+    assert evidence.reason == "no_license_detail"
+    assert evidence.source == "dbpr"

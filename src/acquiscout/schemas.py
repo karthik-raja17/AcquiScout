@@ -354,6 +354,11 @@ class RegistryProfile(BaseModel):
     officers: list[RegistryOfficer] = Field(default_factory=list)
     registered_address: str | None = None
     mailing_address: str | None = None
+    license_number: str | None = None
+    license_type: str | None = None
+    license_status: str | None = None
+    license_expiration: date | None = None
+    licensee_name: str | None = None
     names: list[str] = Field(default_factory=list)
     filings: list[dict[str, object]] = Field(default_factory=list)
     identifiers: list[str] = Field(default_factory=list)

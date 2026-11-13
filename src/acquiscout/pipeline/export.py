@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from acquiscout.config import Settings
+from acquiscout.services.registry_metrics import summarize_registry_evidence
 
 
 def export_run(
@@ -43,6 +44,10 @@ def export_run(
         "company_candidates": [
             company.model_dump(mode="json") for company in final.get("company_candidates") or []
         ],
+        "registry_metrics": summarize_registry_evidence(
+            final.get("company_candidates") or [],
+            final.get("dropped_companies") or [],
+        ),
         "relevance_dropped": final.get("relevance_dropped") or [],
         "dropped_companies": final.get("dropped_companies") or [],
         "checkpoint": str(settings.checkpoint_db_path),

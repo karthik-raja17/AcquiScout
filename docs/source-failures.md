@@ -103,20 +103,57 @@ and short-circuited seven records with `host_circuit_open`. `enrich_registry`
 - It does not treat a `404` or a parse failure as a host outage.
 - It does not change the frozen discovery baseline.
 
-## Future sources
+## Source adapters
 
-The resolver is still Sunbiz-shaped:
+Evidence dispatch is host-based through `RegistrySource`:
 
-- `DETAIL_LINK` only matches Sunbiz `SearchResultDetail` links.
-- `_parse_detail` expects Sunbiz page structure.
-- `myfloridalicense.com` (DBPR) and `dos.fl.gov` (DFS) are approved by policy but
-  do not have parsers yet.
+| Source | Host | Parser |
+|---|---|---|
+| `SunbizSource` | `sunbiz.org` | Follows `SearchResultDetail`, parses officers/status |
+| `DBPREvidenceSource` | `myfloridalicense.com` | Parses license fields from the supplied page |
+| `DFSEvidenceSource` | `dos.fl.gov` | Parses license fields from the supplied page |
+
+License adapters store:
+
+```text
+license_number
+license_type
+license_status
+license_expiration
+licensee_name
+registered_address
+```
+
+If a license page has no recognizable fields, the result is
+`search_page_only` (`no_license_detail`) when it looks like a search page, or
+`parse_failed` (`no_license_fields`) otherwise. They do not infer a license from
+missing data.
 
 Source roles:
 
 | Source | Role |
 |---|---|
 | Sunbiz | G3 / legal identity / officers / status |
-| DBPR | Property-management / real-estate license evidence |
-| DFS | Title agency / agent license evidence |
+| DBPR | Property-management / real-estate license corroboration |
+| DFS | Title agency / agent license corroboration |
 | GovFiles | Discovery and enrichment only, never evidence |
+
+Registry-only companies with only DBPR/DFS evidence are dropped as
+`missing_sunbiz_identity_evidence`; a license is not a substitute for corporate
+identity evidence.
+
+## Metrics by source
+
+`registry_metrics` is written to `manifest.json` and completed-run exports:
+
+```json
+{
+  "profiles": 8,
+  "status_counts": {"blocked": 7, "public_detail": 1},
+  "source_counts": {"sunbiz": 8},
+  "public_detail_by_source": {"sunbiz": 1},
+  "dropped_by_reason": {"registry_evidence_blocked": 8}
+}
+```
+
+This makes blocked/partial coverage visible separately for Sunbiz, DBPR, and DFS.
